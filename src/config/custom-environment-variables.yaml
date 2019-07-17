@@ -1,0 +1,4 @@
+---
+k8s:
+  __name: K8S_CONFIG
+  __format: yaml

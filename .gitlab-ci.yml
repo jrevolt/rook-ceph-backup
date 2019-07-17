@@ -1,0 +1,8 @@
+before_script:
+  - source .gitlab-ci.sh
+
+build:
+  script:
+    - prepare
+    - build
+    - publish

@@ -1,0 +1,28 @@
+---
+k8s:
+
+  proxy:
+    host:
+    port:
+
+  kubectl:
+    config: /root/.kube/config
+
+  rancher:
+    url:
+    accessKey:
+    secretKey:
+
+  backup:
+    path: /mnt/backups
+    storageClassName: rook-ceph-block
+    pool: replicapool
+
+  semaphore:
+    backup: 5
+    operator: 10
+    exec: 15
+
+  deployments:
+    #namespace:
+      #name:
