@@ -12,5 +12,8 @@ program
 program
   .command('snapshot')
   .action(async () => await new Ceph().createSnapshotAll());
+program
+  .command('consolidate')
+  .action(async () => await new Ceph().consolidateAll());
 
 program.parse(process.argv);

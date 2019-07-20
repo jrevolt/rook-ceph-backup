@@ -6,7 +6,7 @@
   "private": true,
   "dependencies": {
     "@elastic/elasticsearch": "^7.1.0",
-    "@types/node": "^12.0.10",
+    "@types/node": "^12.6.8",
     "agentkeepalive": "^4.0.2",
     "await-semaphore": "^0.1.3",
     "bottleneck": "^2.19.1",
@@ -22,6 +22,7 @@
     "fs": "0.0.1-security",
     "js-yaml": "^3.13.1",
     "ldapjs-client": "^0.1.1",
+    "moment": "^2.24.0",
     "printf": "^0.5.1",
     "q": "^1.5.1",
     "request": "^2.88.0",
