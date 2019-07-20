@@ -8,7 +8,7 @@ let program : Command = new Command();
 
 program
   .command('backup')
-  .action(async () => await new Ceph().backupAll());
+  .action(async () => await new Ceph().backupVolumeAll());
 program
   .command('snapshot')
   .action(async () => await new Ceph().createSnapshotAll());

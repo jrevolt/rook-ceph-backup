@@ -1,13 +1,12 @@
-import {cfg, Deployment, Kind, Snapshot, Volume} from "./cfg";
+import {cfg, Deployment, Snapshot, Volume} from "./cfg";
 import {spawn} from "child_process";
 import q from 'q';
 import {log} from "./log";
 import dateFormat from 'dateformat';
-import {dateCompare, o, report, rethrow} from "./utils.js";
-import {Semaphore, Mutex} from 'await-semaphore';
-import moment, {Duration} from 'moment';
+import {report} from "./utils.js";
+import {Semaphore} from 'await-semaphore';
+import moment from 'moment';
 import DurationConstructor = moment.unitOfTime.DurationConstructor;
-import {join} from "path";
 
 export class Ceph {
 
@@ -42,6 +41,38 @@ export class Ceph {
     });
   }
 
+  async createSnapshotAll() {
+    await this.processAllVolumes(async (vol) =>
+      await this.createSnapshot(vol));
+  }
+
+  async createSnapshot(vol: Volume) {
+    let now = new Date(Date.now());
+    let date = dateFormat(now, 'yyyymmdd-HHMM');
+    let snap = `${date}-k8s-live`;
+    let deployment = vol.deployment;
+    log.debug('Creating snapshot %s for image %s (namespace=%s, deployment=%s, pvc=%s)',
+      snap, vol.pv, deployment.namespace, deployment.name, vol.pvc);
+    await this.invokeOperator(`rbd snap create -p ${cfg.backup.pool} --image=${vol.pv} --snap=${snap}`);
+  }
+
+  async backupVolumeAll() {
+    await this.processAllVolumes(async (vol) =>
+      await this.backupVolume(vol));
+    await this.report();
+  }
+
+  async backupVolume(vol: Volume) {
+    let dir = vol.getDirectory();
+    let actions = new Array<()=>void>();
+    let previous: string;
+    vol.snapshots.forEach(x => {
+      let from = previous;
+      actions.push(async () => await this.backupSnapshot(vol.pv, from, x.name, dir).catch(report));
+      previous = x.name;
+    });
+    await actions.forEachAsync(async action => await action());
+  }
 
   async consolidateAll() {
     await this.processAllVolumes(async (vol) =>
@@ -131,27 +162,6 @@ export class Ceph {
     `);
   }
 
-  async createSnapshotAll() {
-    await this.processAllVolumes(async (vol) =>
-      await this.createSnapshot(vol));
-  }
-
-  async createSnapshot(vol: Volume) {
-    let now = new Date(Date.now());
-    let date = dateFormat(now, 'yyyymmdd-HHMM');
-    let snap = `${date}-k8s-live`;
-    let deployment = vol.deployment;
-    log.debug('Creating snapshot %s for image %s (namespace=%s, deployment=%s, pvc=%s)',
-      snap, vol.pv, deployment.namespace, deployment.name, vol.pvc);
-    await this.invokeOperator(`rbd snap create -p ${cfg.backup.pool} --image=${vol.pv} --snap=${snap}`);
-  }
-
-  async backupAll() {
-    await this.processAllVolumes(async (vol) =>
-      await this.backupVolume(vol));
-    await this.report();
-  }
-
   getNamespaceModel(namespace: string) {
     return this.model.get(namespace);
   }
@@ -201,19 +211,6 @@ export class Ceph {
     await vols.forEachAsync(async v => await this.resolveSnapshots(v));
 
     return deployment.volumes = vols;
-  }
-
-
-  async backupVolume(vol: Volume) {
-    let dir = vol.getDirectory();
-    let actions = new Array<()=>void>();
-    let previous: string;
-    vol.snapshots.forEach(x => {
-      let from = previous;
-      actions.push(async () => await this.backupSnapshot(vol.pv, from, x.name, dir).catch(report));
-      previous = x.name;
-    });
-    await actions.forEachAsync(async action => await action());
   }
 
   async resolveSnapshots(vol: Volume) : Promise<Snapshot[]> {
