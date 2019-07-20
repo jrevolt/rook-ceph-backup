@@ -46,6 +46,7 @@ export class Ceph {
   async consolidateAll() {
     await this.processAllVolumes(async (vol) =>
       await this.consolidate(vol));
+    await this.report();
   }
 
   async consolidate(vol: Volume) {
@@ -122,7 +123,7 @@ export class Ceph {
 
   async removeSnapshots(vol: Volume, snaps: Snapshot[]) {
     let names = snaps.map(x => x.name);
-    log.debug('Removing %d snapshots: [%s]', snaps.length, names.join(','));
+    log.debug('Removing %d snapshots {pvc: %s, pv: %s} : [%s]', snaps.length, vol.pvc, vol.pv, names.join(','));
     await this.invokeOperator(`
       for i in ${names.join(' ')}; do      
         rbd -p ${cfg.backup.pool} --image=${vol.pv} snap rm --snap=$i
@@ -148,6 +149,7 @@ export class Ceph {
   async backupAll() {
     await this.processAllVolumes(async (vol) =>
       await this.backupVolume(vol));
+    await this.report();
   }
 
   getNamespaceModel(namespace: string) {
@@ -217,7 +219,10 @@ export class Ceph {
   async resolveSnapshots(vol: Volume) : Promise<Snapshot[]> {
     if (vol.snapshots) return vol.snapshots;
 
-    log.debug('Resolving snapshots for volume %s (%s)', vol.pvc, vol.pv);
+    log.debug(
+      'Resolving snapshots {namespace: %s, deployment: %s, pvc: %s, pv: %s}',
+      vol.deployment.namespace, vol.deployment.name, vol.pvc, vol.pv);
+
     for (let i=1, attempts=2; i<=attempts; i++) {
       let json = await this.invokeOperator(`rbd -p ${cfg.backup.pool} --image=${vol.pv} snap ls --format=json`);
       if (json.trim().length == 0) {
@@ -246,12 +251,12 @@ export class Ceph {
       for (let i=1, attempts=2; i<=attempts; i++) {
 
         let result = await this.invokeOperator(`
-          [[ -f ${tmp} ]] && echo "File exists : ${tmp}. Another backup in progress?" && exit 1
-          [[ -f ${path} ]] && echo "File exists : $(du -h ${path})" && exit
+          [[ -f ${tmp} ]] && echo "File exists : ${tmp}. Another backup in progress?" >&2 && exit 1
+          [[ -f ${path} ]] && exit
           mkdir -p ${directory}    
           rbd -p replicapool --image ${image} export-diff ${rbdFromSnap} ${rbdSnap} - | gzip > ${tmp} && 
             mv ${tmp} ${path} &&
-            echo "File CREATED: $(du -h ${path})"
+            echo "File created: $(du -h ${path})"
           `
         );
 
@@ -313,4 +318,14 @@ export class Ceph {
     return await this.operatorSemaphore.use(async () =>
       await this.podexec("rook-ceph", this.operator, script));
   }
+
+  async report() {
+    let report = await this.invokeOperator(`
+      cd ${cfg.backup.path} 
+      find * -type f | sort | xargs ls -sh
+      df -h $PWD
+    `);
+    log.debug('File report:\n%s', report);
+  }
+
 }
