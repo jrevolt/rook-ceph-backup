@@ -249,7 +249,7 @@ export class Ceph {
 
         let result = await this.invokeOperator(`
           [[ -f ${tmp} ]] && echo "File exists : ${tmp}. Another backup in progress?" >&2 && exit 1
-          [[ -f ${path} ]] && exit
+          [[ -f ${path} ]] && echo "File exists: ${path}" && exit
           mkdir -p ${directory}    
           rbd -p replicapool --image ${image} export-diff ${rbdFromSnap} ${rbdSnap} - | gzip > ${tmp} && 
             mv ${tmp} ${path} &&
