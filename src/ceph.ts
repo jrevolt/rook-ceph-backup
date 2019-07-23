@@ -6,12 +6,22 @@ import dateFormat from 'dateformat';
 import {report} from "./utils.js";
 import {Semaphore} from 'await-semaphore';
 import moment from 'moment';
+import * as k8s from '@kubernetes/client-node';
+import {V1Deployment, V1Pod, V1StatefulSet} from '@kubernetes/client-node';
+import * as streamBuffers from 'stream-buffers';
 import DurationConstructor = moment.unitOfTime.DurationConstructor;
+
+interface INamespace {
+  persistentVolumeClaims: k8s.V1PersistentVolumeClaim[],
+  pods: V1Pod[],
+  deployments: V1Deployment[],
+  statefulSets: V1StatefulSet[],
+}
 
 export class Ceph {
 
   // k8s model by namespace
-  model: Map<string,any> = new Map<string, any>();
+  model: Map<string,INamespace> = new Map<string, INamespace>();
 
   // name of the rook-ceph-operator pod
   operator : string;
@@ -19,6 +29,31 @@ export class Ceph {
   execSemaphore: Semaphore = new Semaphore(cfg.semaphore.exec);
   operatorSemaphore: Semaphore = new Semaphore(cfg.semaphore.operator);
   backupSemaphore: Semaphore = new Semaphore(cfg.semaphore.backup);
+
+  k8sConfig: k8s.KubeConfig;
+  k8sClient: k8s.CoreV1Api;
+  k8sClientApps: k8s.AppsV1Api;
+  k8sExec: k8s.Exec;
+
+
+  constructor() {
+    this.initializeKubernetesClient();
+  }
+
+  initializeKubernetesClient() {
+    let config = new k8s.KubeConfig();
+    config.loadFromFile(cfg.kubectl.config);
+
+    let core = config.makeApiClient(k8s.CoreV1Api);
+    let apps = config.makeApiClient(k8s.AppsV1Api);
+    let exec = new k8s.Exec(config);
+
+    this.k8sConfig = config;
+    this.k8sClient = core;
+    this.k8sClientApps = apps;
+    this.k8sExec = exec;
+  }
+
 
   async processAllDeployments(action: (d:Deployment)=>void) {
     await Promise.all([
@@ -162,15 +197,33 @@ export class Ceph {
     `);
   }
 
-  getNamespaceModel(namespace: string) {
+  getNamespaceModel(namespace: string) : INamespace {
     return this.model.get(namespace);
   }
 
   async loadNamespaceModel(namespace: string) {
     log.debug('Loading namespace %s', namespace);
-    let json = await this.scriptexec(`kubectl -n ${namespace} get deployment,statefulset,pod,pvc -o json`);
-    let model = JSON.parse(json);
+
+    function unbox(x: any) {
+      return x.body.items.filter(i => i.metadata);
+    }
+
+    let [ pvcs, pods, statefulSets, deployments ] = await Promise.all([
+      this.k8sClient.listNamespacedPersistentVolumeClaim(namespace).then(unbox),
+      this.k8sClient.listNamespacedPod(namespace).then(unbox),
+      this.k8sClientApps.listNamespacedStatefulSet(namespace).then(unbox),
+      this.k8sClientApps.listNamespacedDeployment(namespace).then(unbox),
+    ]);
+
+    let model: INamespace = {
+      persistentVolumeClaims: pvcs,
+      pods: pods,
+      deployments: deployments,
+      statefulSets: statefulSets
+    };
+
     this.model.set(namespace, model);
+
     return model;
   }
 
@@ -185,20 +238,20 @@ export class Ceph {
 
     let model = this.getNamespaceModel(deployment.namespace);
 
-    let deployments = model.items
-      .filter(x => x.kind.match('Deployment|StatefulSet'))
+    let deployments = [].concat(model.deployments).concat(model.statefulSets)
+      //.filter(x => x.kind.match('Deployment|StatefulSet'))
       .find(x => x.metadata.name == deployment.name);
     let sel = deployments.spec.selector.matchLabels;
-    let pods = model.items
-      .filter(x => x.kind.match('Pod'))
+    let pods = model.pods
+      //.filter(x => x.kind.match('Pod'))
       .filter(x => this.isMatchLabels(sel, x.metadata.labels));
     let claims = pods.map(x => x.spec.volumes
       .filter(v => v.persistentVolumeClaim)
-      .map(v => v.persistentVolumeClaim.claimName))
-      .flat();
+      .map(v => v.persistentVolumeClaim.claimName)
+    ).flat();
 
-    let vols = claims.map(c => model.items
-      .filter(x => x.kind.match('PersistentVolumeClaim'))
+    let vols = claims.map(c => model.persistentVolumeClaims
+      //.filter(x => x.kind.match('PersistentVolumeClaim'))
       .filter(x => x.metadata.name == c)
       .filter(x => x.spec.storageClassName == cfg.backup.storageClassName)
       .map(x => new Volume({
@@ -300,20 +353,57 @@ export class Ceph {
     return await this.exec("bash", ["-c", script]);
   }
 
-  async podexec(namespace, pod, script) : Promise<string> {
-    return await this.exec("kubectl", ["-n", namespace, "exec", pod, "--", "bash", "-c", script]);
+  async podexec(namespace, pod, container, script) : Promise<string> {
+
+    let stdout = new streamBuffers.WritableStreamBuffer();
+    let stderr = new streamBuffers.WritableStreamBuffer();
+    let deferred = q.defer();
+    let output: string;
+    let error: string;
+    let code: number;
+    await this.k8sExec.exec(
+      namespace,
+      pod,
+      container,
+      ['bash', '-c', script],
+      stdout,
+      stderr,
+      null /*stdin*/,
+      false /*tty*/,
+      (x: k8s.V1Status) => {
+        output = stdout.getContentsAsString();
+        if (x.status == 'Failure') {
+          error = stderr.getContentsAsString();
+          code = parseInt(x.details.causes.find(c => c.reason == 'ExitCode').message);
+        }
+
+        deferred.resolve();
+      }
+    ).catch(e => {
+      throw e;
+    });
+    await deferred.promise;
+
+    if (code && code != 0) {
+      throw new Error(`Failed! Code: ${code}. Errors: ${error.trim()}. Script: ${script}`);
+    }
+
+    return output;
   }
 
   async resolveOperator() {
     log.debug('Resolving rook-ceph-operator pod...');
-    this.operator = await this.scriptexec(
-      `kubectl -n rook-ceph get pod -l app=rook-ceph-operator -o jsonpath='{.items[].metadata.name}'`
-    );
+    this.operator = await this.k8sClient.listNamespacedPod('rook-ceph')
+      .then(x => x.body.items
+        .filter(x => x.metadata)
+        .filter(x => this.isMatchLabels({app: 'rook-ceph-operator'}, x.metadata.labels))
+        .map(x => x.metadata.name)
+        .first());
   }
 
   async invokeOperator(script: string) : Promise<string> {
     return await this.operatorSemaphore.use(async () =>
-      await this.podexec("rook-ceph", this.operator, script));
+      await this.podexec("rook-ceph", this.operator, 'rook-ceph-operator', script));
   }
 
   async report() {
