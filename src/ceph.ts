@@ -144,10 +144,20 @@ export class Ceph {
   }
 
   consolidateSnapshots(snaps: Snapshot[]) {
+    let first = snaps.first();
+
     let daily = this.electDailySnapshots(snaps);
     let weekly = this.electWeeklySnapshots(snaps, daily);
     let monthly = this.electMonthlySnapshots(snaps, weekly);
+
+    let isFirstSnapshotEvicted = !daily.contains(first) && !weekly.contains(first) && !monthly.contains(first);
+    let isMonthlyBaselineElected = monthly.length > 0;
+
+    // do not drop existing baseline if there is no successor (new monthly baseline)
+    if (!isMonthlyBaselineElected && isFirstSnapshotEvicted) monthly.push(first);
+
     let result = monthly.concat(weekly).concat(daily);
+
     return result;
   }
 

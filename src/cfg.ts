@@ -7,6 +7,7 @@ import Bottleneck from "bottleneck";
 export const cfg: Configuration = deepExtend({}, config.get('k8s'));
 
 interface Configuration {
+  debug: boolean,
   proxy: {
     host: string,
     port: number,

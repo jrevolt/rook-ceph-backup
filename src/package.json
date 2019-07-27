@@ -39,6 +39,12 @@
   "scripts": {
     "tsc": "tsc",
     "dev": "ts-node-dev --respawn --transpileOnly test.ts",
-    "prod": "tsc && node ./build/test.js"
+    "prod": "tsc && node ./build/test.js",
+    "test": "jest"
+  },
+  "devDependencies": {
+    "@types/jest": "^24.0.15",
+    "jest": "^24.8.0",
+    "ts-jest": "^24.0.2"
   }
 }

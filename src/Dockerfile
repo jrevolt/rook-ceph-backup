@@ -14,6 +14,7 @@ ADD package*json ./
 RUN npm ci
 ADD . ./
 RUN npm run tsc
+RUN npm run test
 
 FROM base
 WORKDIR /app
