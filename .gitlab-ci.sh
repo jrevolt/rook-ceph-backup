@@ -2,7 +2,7 @@
 
 repo="repods.mdxdev.sk"
 name="tools/k8s"
-version="latest"
+version="${CI_COMMIT_REF_NAME}"
 
 base="$repo/$name:base"
 image="$repo/$name:$version"

@@ -23,8 +23,8 @@ export class Ceph {
   // k8s model by namespace
   model: Map<string,INamespace> = new Map<string, INamespace>();
 
-  // name of the rook-ceph-operator pod
-  operator : string;
+  // name of the rook-ceph-tools pod
+  toolbox : string;
 
   execSemaphore: Semaphore = new Semaphore(cfg.semaphore.exec);
   operatorSemaphore: Semaphore = new Semaphore(cfg.semaphore.operator);
@@ -57,7 +57,7 @@ export class Ceph {
 
   async processAllDeployments(action: (d:Deployment)=>void) {
     await Promise.all([
-      await this.resolveOperator(),
+      await this.resolveToolbox(),
       await Object.keys(cfg.deployments).forEachAsync(async (namespace) =>
         await this.loadNamespaceModel(namespace)),
     ]);
@@ -88,7 +88,7 @@ export class Ceph {
     let deployment = vol.deployment;
     log.debug('Creating snapshot %s for image %s (namespace=%s, deployment=%s, pvc=%s)',
       snap, vol.pv, deployment.namespace, deployment.name, vol.pvc);
-    await this.invokeOperator(`rbd snap create -p ${cfg.backup.pool} --image=${vol.pv} --snap=${snap}`);
+    await this.invokeToolbox(`rbd snap create -p ${cfg.backup.pool} --image=${vol.pv} --snap=${snap}`);
   }
 
   async backupVolumeAll() {
@@ -134,7 +134,7 @@ export class Ceph {
       this.removeSnapshots(vol, evicted),
 
       // delete backup files for evicted and outdated snapshots
-      this.invokeOperator(`cd ${dir} && rm -fv ${deletedFiles.join(' ')}`),
+      this.invokeToolbox(`cd ${dir} && rm -fv ${deletedFiles.join(' ')}`),
     ]);
 
     // commit consolidated list & launch backup
@@ -143,7 +143,9 @@ export class Ceph {
     await this.backupVolume(vol);
   }
 
-  consolidateSnapshots(snaps: Snapshot[]) {
+  consolidateSnapshots(snaps: Snapshot[]) : Snapshot[] {
+    if (snaps.length == 0) return snaps; // nothing to do here
+
     let first = snaps.first();
 
     let daily = this.electDailySnapshots(snaps);
@@ -200,7 +202,7 @@ export class Ceph {
   async removeSnapshots(vol: Volume, snaps: Snapshot[]) {
     let names = snaps.map(x => x.name);
     log.debug('Removing %d snapshots {pvc: %s, pv: %s} : [%s]', snaps.length, vol.pvc, vol.pv, names.join(','));
-    await this.invokeOperator(`
+    await this.invokeToolbox(`
       for i in ${names.join(' ')}; do      
         rbd -p ${cfg.backup.pool} --image=${vol.pv} snap rm --snap=$i
       done 
@@ -284,7 +286,7 @@ export class Ceph {
       vol.deployment.namespace, vol.deployment.name, vol.pvc, vol.pv);
 
     for (let i=1, attempts=2; i<=attempts; i++) {
-      let json = await this.invokeOperator(`rbd -p ${cfg.backup.pool} --image=${vol.pv} snap ls --format=json`);
+      let json = await this.invokeToolbox(`rbd -p ${cfg.backup.pool} --image=${vol.pv} snap ls --format=json`);
       if (json.trim().length == 0) {
         log.warn('Attempt %s/%s: Failed to resolve snapshots.', i, attempts);
         continue;
@@ -310,7 +312,7 @@ export class Ceph {
 
       for (let i=1, attempts=2; i<=attempts; i++) {
 
-        let result = await this.invokeOperator(`
+        let result = await this.invokeToolbox(`
           [[ -f ${tmp} ]] && echo "File exists : ${tmp}. Another backup in progress?" >&2 && exit 1
           [[ -f ${path} ]] && echo "File exists: ${path}" && exit
           mkdir -p ${directory}    
@@ -401,23 +403,23 @@ export class Ceph {
     return output;
   }
 
-  async resolveOperator() {
-    log.debug('Resolving rook-ceph-operator pod...');
-    this.operator = await this.k8sClient.listNamespacedPod('rook-ceph')
+  async resolveToolbox() {
+    log.debug('Resolving rook-ceph-tools pod...');
+    this.toolbox = await this.k8sClient.listNamespacedPod('rook-ceph')
       .then(x => x.body.items
         .filter(x => x.metadata)
-        .filter(x => this.isMatchLabels({app: 'rook-ceph-operator'}, x.metadata.labels))
+        .filter(x => this.isMatchLabels({app: 'rook-ceph-tools'}, x.metadata.labels))
         .map(x => x.metadata.name)
         .first());
   }
 
-  async invokeOperator(script: string) : Promise<string> {
+  async invokeToolbox(script: string) : Promise<string> {
     return await this.operatorSemaphore.use(async () =>
-      await this.podexec("rook-ceph", this.operator, 'rook-ceph-operator', script));
+      await this.podexec("rook-ceph", this.toolbox, 'rook-ceph-tools', script));
   }
 
   async report() {
-    let report = await this.invokeOperator(`
+    let report = await this.invokeToolbox(`
       cd ${cfg.backup.path} 
       find * -type f | sort | xargs ls -sh
       df -h $PWD
