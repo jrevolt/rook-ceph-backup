@@ -11,7 +11,6 @@ prepare() {
     docker pull ${base} || {
         docker build -t ${base} --cache-from=${base} --target=base src
     }
-    docker pull ${base}
     docker build -t ${base} --cache-from=${base} --target=base src
 }
 
