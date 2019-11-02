@@ -3,7 +3,7 @@ import {spawn} from "child_process";
 import q from 'q';
 import {log} from "./log";
 import dateFormat from 'dateformat';
-import {report} from "./utils.js";
+import {report} from "./utils";
 import {Semaphore} from 'await-semaphore';
 import moment from 'moment';
 import * as k8s from '@kubernetes/client-node';
@@ -316,7 +316,7 @@ export class Ceph {
           [[ -f ${tmp} ]] && echo "File exists : ${tmp}. Another backup in progress?" >&2 && exit 1
           [[ -f ${path} ]] && echo "File exists: ${path}" && exit
           mkdir -p ${directory}    
-          rbd -p replicapool --image ${image} export-diff ${rbdFromSnap} ${rbdSnap} - | gzip > ${tmp} && 
+          rbd -p ${cfg.backup.pool} --image ${image} export-diff ${rbdFromSnap} ${rbdSnap} - | gzip > ${tmp} && 
             mv ${tmp} ${path} &&
             echo "File created: $(du -h ${path})"
           `
@@ -337,7 +337,7 @@ export class Ceph {
     let proxy = cfg.proxy.host ? `http://${cfg.proxy.host}:${cfg.proxy.port}` : '';
     return {
       KUBECONFIG: cfg.kubectl.config,
-      HTTPS_PROXY: proxy,
+      //HTTPS_PROXY: proxy,
     }
   }
 

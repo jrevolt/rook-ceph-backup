@@ -16,7 +16,7 @@ k8s:
   backup:
     path: /mnt/backups
     storageClassName: rook-ceph-block
-    pool: replicapool
+    pool: rbd
     daily: 7
     weekly: 4
     monthly: 3
