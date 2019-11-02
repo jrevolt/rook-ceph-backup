@@ -1,5 +1,5 @@
-FROM node:12-alpine as base
-RUN apk add --update --no-cache bash curl jq
+FROM alpine as base
+RUN apk add --update --no-cache bash curl jq nodejs
 RUN echo "Installing kubectl..." &&\
     version=$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt) &&\
     url=https://storage.googleapis.com/kubernetes-release/release/${version}/bin/linux/amd64/kubectl &&\

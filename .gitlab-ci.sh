@@ -8,9 +8,9 @@ base="$repo/$name:base"
 image="$repo/$name:$version"
 
 prepare() {
-#    docker pull ${base} || {
-#        docker build -t ${base} --cache-from=${base} --target=base src
-#    }
+    docker pull ${base} || {
+        docker build -t ${base} --cache-from=${base} --target=base src
+    }
     docker pull ${base}
     docker build -t ${base} --cache-from=${base} --target=base src
 }
