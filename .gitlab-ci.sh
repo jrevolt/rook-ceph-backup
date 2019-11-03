@@ -15,7 +15,7 @@ prepare() {
 }
 
 build() {
-    docker build -t ${image} src
+    docker build -t ${image} --target=main src
 }
 
 publish() {

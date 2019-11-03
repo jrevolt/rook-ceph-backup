@@ -16,8 +16,11 @@ ADD . ./
 RUN npm run tsc
 #RUN npm run test
 
-FROM base
+FROM node:12-alpine as main
 WORKDIR /app
+RUN apk add --update --no-cache bash curl jq
+ADD entrypoint.sh /usr/local/bin/k8s
+COPY --from=base /usr/local/bin/kubectl /usr/local/bin/kubectl
 COPY --from=build /work/node_modules/ node_modules/
 COPY --from=build /work/config/ config/
 COPY --from=build /work/.build/ ./
