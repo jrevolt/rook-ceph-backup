@@ -2,11 +2,13 @@ before_script:
   - source .gitlab-ci.sh
 
 build:
+  stage: build
   script:
     - prepare
     - build
     - publish
 deploy:
+   stage: deploy
    only: [ master, tags ]
    script:
       - deploy
