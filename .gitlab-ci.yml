@@ -6,4 +6,7 @@ build:
     - prepare
     - build
     - publish
-    - deploy
+deploy:
+   only: [ master, tags ]
+   script:
+      - deploy
