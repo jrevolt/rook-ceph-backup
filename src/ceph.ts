@@ -293,7 +293,7 @@ export class Ceph {
       }
       vol.snapshots = JSON.parse(json).map(x => new Snapshot({
         name: x.name,
-        timestamp: new Date(Date.parse(x.timestamp)),
+        timestamp: moment(x.name, 'YYYYMMDD-HHmm').toDate(), //don't rely on x.timestamp, it may be invalid if snapshot is imported
         volume: vol,
       }));
       break;
