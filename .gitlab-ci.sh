@@ -23,4 +23,9 @@ publish() {
     docker push ${image}
 }
 
+deploy() {
+  docker run --rm bitnami/kubectl --server ${K8S_SERVER_PROD} --token ${K8S_TOKEN} -n admin rollout restart sts/test
+  docker run --rm bitnami/kubectl --server ${K8S_SERVER_DEVTEST} --token ${K8S_TOKEN} -n admin rollout restart sts/test
+}
+
 "$@"

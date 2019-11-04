@@ -6,3 +6,4 @@ build:
     - prepare
     - build
     - publish
+    - deploy
