@@ -139,7 +139,10 @@ export class Ceph {
     // validate snapshot list: native RBD order (by time) must be the same as our timestamped name ordering (YYYYMMDD-HHmm)
     let names = parsed.map(x => x.name);
     let sortedNames = parsed.map(x => x.name).sort((a,b) => a.localeCompare(b));
-    if (!names.equals(sortedNames)) throw Error(`Unexpected snapshot ordering: [${names.join(',')}]`);
+    if (!names.equals(sortedNames)) {
+      // todo: review: may happen after restore; otherwise, this indicates problem in snapshot hierarchy: results are undefined
+      log.warn(`Unexpected snapshot ordering: [${names.join(',')}]`);
+    }
 
     vol.snapshots = parsed.map(x => new Snapshot({
       name: x.name,
