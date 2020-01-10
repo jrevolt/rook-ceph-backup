@@ -6,12 +6,5 @@ build:
   stage: build
   tags: [ jrevolt ]
   script:
-    - prepare
     - build
-    - publish
 
-.deploy:
-   stage: deploy
-   only: [ master, tags, v2-snap-optimize ]
-   script:
-      - deploy

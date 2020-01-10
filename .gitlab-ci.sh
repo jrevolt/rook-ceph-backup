@@ -24,15 +24,9 @@ build() {
       --frontend dockerfile.v0 \
       --local context=. \
       --local dockerfile=. \
-      $(true && echo "--output type=image,name=registry.gitlab.com/jrevolt/rook-ceph-backup:build,push=true") \
+      $(true && echo "--output type=image,name=docker.io/jrevolt/rook-ceph-backup:${CI_COMMIT_REF_NAME},push=true") \
       $(false && echo "--export-cache type=registry,ref=registry.gitlab.com/jrevolt/rook-ceph-backup:cache,mode=max") \
       $(false && echo "--import-cache type=registry,ref=registry.gitlab.com/jrevolt/rook-ceph-backup:cache") \
-      "$@" &&
-    buildctl build \
-      --frontend dockerfile.v0 \
-      --local context=. \
-      --local dockerfile=. \
-      $(true && echo "--output type=image,name=docker.io/jrevolt/rook-ceph-backup:build,push=true") \
       "$@"
 }
 
