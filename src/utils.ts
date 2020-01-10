@@ -1,5 +1,9 @@
 import TraceError from "trace-error";
-import {log} from "./log.js";
+import {log, logctx} from "./log";
+import moment, {Moment, MomentFormatSpecification, MomentInput} from "moment";
+import {BackupType} from "./cfg";
+import {rbdtools} from "./main";
+import DurationConstructor = moment.unitOfTime.DurationConstructor;
 
 export function qdhImportGlobals() {}
 
@@ -14,6 +18,7 @@ declare global {
     previous(t:T) : T;
     contains(t:T) : boolean;
     remove(t:T) : T[];
+    equals(t:T) : boolean;
   }
   interface Map<K,V> {
     forEachAsync(action: (item: V) => void): void;
@@ -48,9 +53,20 @@ Array.prototype.remove = function (t) {
   return this;
 };
 
+Array.prototype.equals = function (t) {
+  return this.length == t.length && this.every((x,idx,arr) => x == t[idx]);
+};
+
 String.prototype.truncate = function (max) {
   return this.substring(0, Math.min(this.length, max));
 };
+
+export class ParamError extends Error {
+}
+
+export function fail(message) : boolean {
+  throw new ParamError(message);
+}
 
 export function report(err) {
    if (err) {
@@ -74,7 +90,39 @@ export function o<T>(someObject: T, defaultValue: T = {} as T) : T {
     return someObject;
 }
 
+export function toBackupType(duration: DurationConstructor) : BackupType {
+  switch (duration) {
+    case "day": return BackupType.daily;
+    case "week": return BackupType.weekly;
+    case "month": return BackupType.monthly;
+    default: throw new Error(`unexpected: ${duration}`);
+  }
+}
 
+export enum Weekday {
+  Sunday,
+  Monday,
+  Tuesday,
+  Wednesday,
+  Thursday,
+  Friday,
+  Saturday,
+}
 
+//export const Weekdays : string[] = ['Sunday', 'Monday', 'Tuesday', ];
 
+export function findFirstDayOfMonthByWeekday(date: Date, weekday: Weekday) : number {
+  let x = newMoment(new Date(date.getFullYear(), date.getMonth(), 1));
+  while (x.toDate().getDay() != weekday)
+    x = x.add(1, "d");
+  return x.toDate().getDate();
+}
 
+export function newMoment(input?: MomentInput, format?: MomentFormatSpecification) : Moment {
+  return moment(input, format);
+}
+
+export function help() {
+  let c = rbdtools.commands.find(x => x._name == logctx.command);
+  c ? c.help() : rbdtools.help();
+}

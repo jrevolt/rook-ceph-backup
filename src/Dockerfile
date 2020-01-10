@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1-experimental
+
 FROM alpine as base
 RUN apk add --update --no-cache bash curl jq nodejs
 RUN echo "Installing kubectl..." &&\
@@ -17,8 +19,9 @@ RUN npm run tsc
 #RUN npm run test
 
 FROM node:12-alpine as main
+ENV TZ="Europe/Bratislava"
 WORKDIR /app
-RUN apk add --update --no-cache bash curl jq
+RUN apk add --update --no-cache bash curl jq tzdata
 ADD entrypoint.sh /usr/local/bin/k8s
 COPY --from=base /usr/local/bin/kubectl /usr/local/bin/kubectl
 COPY --from=build /work/node_modules/ node_modules/

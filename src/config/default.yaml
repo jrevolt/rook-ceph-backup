@@ -13,19 +13,26 @@ k8s:
     accessKey:
     secretKey:
 
+  elasticsearch:
+    indexPrefix: #k8s-tools-clustername
+    clientOpts:
+      host: #https://elasticsearch.mdxdev.sk
+
   backup:
+    nameFormat: YYYYMMDD-HHmm
+    namePattern: ^\d{8}-\d{4}$
     path: /mnt/backups
     storageClassName: rook-ceph-block
     pool: rbd
-    daily: 7
-    weekly: 4
-    monthly: 3
+    monthly: { max: 2, .dayOfMonth: 1, .dayOfWeek: Sunday }
+    weekly:  { max: 3, dayOfWeek: Sunday }
+    daily:   { max: 5 }
 
   semaphore:
     backup: 5
     operator: 10
     exec: 15
 
-  deployments:
+  #deployments:
     #namespace:
       #name:

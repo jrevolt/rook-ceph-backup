@@ -1,7 +1,7 @@
-import {cfg} from "./cfg";
 import winston from 'winston';
 import ElasticSearch from 'winston-elasticsearch';
 import extend from 'extend';
+import {cfg} from "./cfg";
 
 interface LogContext {
   command? : string
@@ -42,8 +42,8 @@ export const log = winston.createLogger({
   level: 'debug',
   transports: [
     new winston.transports.Console({ format: format }),
-    //new ElasticSearch(extend({ format: esformat }, cfg.elasticsearch)),
-  ],
+    cfg.elasticsearch.clientOpts.host ? new ElasticSearch(extend({ format: esformat }, cfg.elasticsearch)) : undefined,
+  ].filter(x=>x),
 });
 
 ElasticSearch.prototype.end = async function () {

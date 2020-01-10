@@ -8,24 +8,47 @@ base="$repo/$name:base"
 image="$repo/$name:$version"
 
 prepare() {
-    docker pull ${base} || {
-        docker build -t ${base} --cache-from=${base} --target=base src
-    }
-    docker build -t ${base} --cache-from=${base} --target=base src
+  return 0
+  #echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
+  #printf '{"auths": {"%s": "auth": "%s"}}' $CI_REGISTRY $(echo -n "$CI_REGISTRY_USERNAME:$CI_REGISTRY_PASSWORD" | base64) > ~/.docker/config.json
+  wget https://github.com/moby/buildkit/releases/download/v0.6.2/buildkit-v0.6.2.linux-amd64.tar.gz
+  tar xzvf buildkit*gz
+  mv bin/* /usr/local/bin/
+  buildkitd --tlscacert /etc/ssl/certs/ca-certificates.crt &
+  sleep 2s
 }
 
 build() {
-    docker build -t ${image} --target=main src
+    cd src &&
+    buildctl build \
+      --frontend dockerfile.v0 \
+      --local context=. \
+      --local dockerfile=. \
+      $(true && echo "--output type=image,name=registry.gitlab.com/jrevolt/rook-ceph-backup:build,push=true") \
+      $(false && echo "--export-cache type=registry,ref=registry.gitlab.com/jrevolt/rook-ceph-backup:cache,mode=max") \
+      $(false && echo "--import-cache type=registry,ref=registry.gitlab.com/jrevolt/rook-ceph-backup:cache") \
+      "$@" &&
+    buildctl build \
+      --frontend dockerfile.v0 \
+      --local context=. \
+      --local dockerfile=. \
+      $(true && echo "--output type=image,name=docker.io/jrevolt/rook-ceph-backup:build,push=true") \
+      "$@"
 }
 
 publish() {
-    docker push ${base}
-    docker push ${image}
+    return 0
+#    docker push ${base}
+#    docker push ${image}
 }
 
 deploy() {
-  docker run --rm bitnami/kubectl --server ${K8S_SERVER_PROD} --token ${K8S_TOKEN_PROD} -n admin rollout restart sts/test
-  docker run --rm bitnami/kubectl --server ${K8S_SERVER_DEVTEST} --token ${K8S_TOKEN_DEVTEST} -n admin rollout restart sts/test
+  return 0
+#  docker run --rm bitnami/kubectl --server ${K8S_SERVER_DEVTEST} --token ${K8S_TOKEN_DEVTEST} -n admin set image sts/test "*=${name}:${version}"
+#  docker run --rm bitnami/kubectl --server ${K8S_SERVER_DEVTEST} --token ${K8S_TOKEN_DEVTEST} -n admin set image cronjob/snapshot "*=${name}:${version}"
+#  docker run --rm bitnami/kubectl --server ${K8S_SERVER_DEVTEST} --token ${K8S_TOKEN_DEVTEST} -n admin set image cronjob/backup "*=${name}:${version}"
+#  docker run --rm bitnami/kubectl --server ${K8S_SERVER_DEVTEST} --token ${K8S_TOKEN_DEVTEST} -n admin set image cronjob/consolidate "*=${name}:${version}"
+#  docker run --rm bitnami/kubectl --server ${K8S_SERVER_DEVTEST} --token ${K8S_TOKEN_DEVTEST} -n admin rollout restart sts/test
 }
 
 "$@"

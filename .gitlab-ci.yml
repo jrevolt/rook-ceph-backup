@@ -1,14 +1,17 @@
+
 before_script:
   - source .gitlab-ci.sh
 
 build:
   stage: build
+  tags: [ jrevolt ]
   script:
     - prepare
     - build
     - publish
-deploy:
+
+.deploy:
    stage: deploy
-   only: [ master, tags ]
+   only: [ master, tags, v2-snap-optimize ]
    script:
       - deploy

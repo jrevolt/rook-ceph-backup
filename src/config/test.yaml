@@ -1,7 +1,16 @@
 ---
 k8s:
   backup:
-    daily: 7
-    weekly: 4
-    monthly: 3
+    path: /mnt/backups/pbetest
+    storageClassName: rook-ceph-block
+    pool: replicapool
+    monthly: { max: 2, dayOfMonth: 1 }
+    weekly:  { max: 2, dayOfWeek: Sunday }
+    daily:   { max: 5 }
 
+  kubectl:
+    config: config/kubectl.devtest.local.yaml
+
+  deployments:
+    mediworx-tools:
+      alpine1:

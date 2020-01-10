@@ -1,15 +1,19 @@
-import {cfg, Deployment, Snapshot, Volume} from "./cfg";
+import * as utils from './utils';
+import {newMoment, o} from './utils';
+import {BackupType, cfg, Deployment, Snapshot, Volume} from "./cfg";
 import {spawn} from "child_process";
 import q from 'q';
 import {log} from "./log";
-import dateFormat from 'dateformat';
-import {report} from "./utils";
 import {Semaphore} from 'await-semaphore';
 import moment from 'moment';
+//import * as m from 'moment';
+//import * as mi from 'moment-interval';
 import * as k8s from '@kubernetes/client-node';
 import {V1Deployment, V1Pod, V1StatefulSet} from '@kubernetes/client-node';
 import * as streamBuffers from 'stream-buffers';
-import DurationConstructor = moment.unitOfTime.DurationConstructor;
+import extend from 'extend';
+//import moment = require("moment");
+//import moment = require("moment");
 
 interface INamespace {
   persistentVolumeClaims: k8s.V1PersistentVolumeClaim[],
@@ -54,166 +58,14 @@ export class Ceph {
     this.k8sExec = exec;
   }
 
-
-  async processAllDeployments(action: (d:Deployment)=>void) {
-    await Promise.all([
-      await this.resolveToolbox(),
-      await Object.keys(cfg.deployments).forEachAsync(async (namespace) =>
-        await this.loadNamespaceModel(namespace)),
-    ]);
-    await Object.keys(cfg.deployments).forEachAsync(async (namespace) =>
-      await Object.keys(cfg.deployments[namespace]).forEachAsync(async (deployment) => {
-        await action(new Deployment(deployment, namespace));
-      }));
-  }
-
-  async processAllVolumes(action: (vol: Volume) => void) {
-    await this.processAllDeployments(async (deployment) => {
-      await this.resolveVolumes(deployment);
-      await deployment.volumes.forEachAsync(async (x) =>
-        await action(x)
-      )
-    });
-  }
-
-  async createSnapshotAll() {
-    await this.processAllVolumes(async (vol) =>
-      await this.createSnapshot(vol));
-  }
-
-  async createSnapshot(vol: Volume) {
-    let now = new Date(Date.now());
-    let date = dateFormat(now, 'yyyymmdd-HHMM');
-    let snap = `${date}-k8s-live`;
-    let deployment = vol.deployment;
-    log.debug('Creating snapshot %s for image %s (namespace=%s, deployment=%s, pvc=%s)',
-      snap, vol.pv, deployment.namespace, deployment.name, vol.pvc);
-    await this.invokeToolbox(`rbd snap create -p ${cfg.backup.pool} --image=${vol.pv} --snap=${snap}`);
-  }
-
-  async backupVolumeAll() {
-    await this.processAllVolumes(async (vol) =>
-      await this.backupVolume(vol));
-    await this.report();
-  }
-
-  async backupVolume(vol: Volume) {
-    let dir = vol.getDirectory();
-    let actions = new Array<()=>void>();
-    let previous: string;
-    vol.snapshots.forEach(x => {
-      let from = previous;
-      actions.push(async () => await this.backupSnapshot(vol.pv, from, x.name, dir).catch(report));
-      previous = x.name;
-    });
-    await actions.forEachAsync(async action => await action());
-  }
-
-  async consolidateAll() {
-    await this.processAllVolumes(async (vol) =>
-      await this.consolidate(vol));
-    await this.report();
-  }
-
-  async consolidate(vol: Volume) {
-
-    let snaps = vol.snapshots;
-    let consolidated = this.consolidateSnapshots(snaps);
-    let evicted = snaps.filter(x => !consolidated.contains(x));
-
-    let evictedFiles = evicted.map(x => x.getFileName());
-    let outdatedFiles= consolidated
-      .filter(x => consolidated.previous(x) != snaps.previous(x))
-      .map(x => x.getFileName());
-
-    let dir = vol.getDirectory();
-    let deletedFiles = evictedFiles.concat(outdatedFiles);
-
-    await Promise.all([
-      // remove evicted snapshots
-      this.removeSnapshots(vol, evicted),
-
-      // delete backup files for evicted and outdated snapshots
-      this.invokeToolbox(`cd ${dir} && rm -fv ${deletedFiles.join(' ')}`),
-    ]);
-
-    // commit consolidated list & launch backup
-    vol.snapshots = consolidated;
-
-    await this.backupVolume(vol);
-  }
-
-  consolidateSnapshots(snaps: Snapshot[]) : Snapshot[] {
-    if (snaps.length == 0) return snaps; // nothing to do here
-
-    let first = snaps.first();
-
-    let daily = this.electDailySnapshots(snaps);
-    let weekly = this.electWeeklySnapshots(snaps, daily);
-    let monthly = this.electMonthlySnapshots(snaps, weekly);
-
-    let isFirstSnapshotEvicted = !daily.contains(first) && !weekly.contains(first) && !monthly.contains(first);
-    let isMonthlyBaselineElected = monthly.length > 0;
-
-    // do not drop existing baseline if there is no successor (new monthly baseline)
-    if (!isMonthlyBaselineElected && isFirstSnapshotEvicted) monthly.push(first);
-
-    let result = monthly.concat(weekly).concat(daily);
-
-    return result;
-  }
-
-  electDailySnapshots(snaps: Snapshot[]) : Snapshot[] {
-    let idx = new Map();
-    snaps.forEach(x => idx.set(dateFormat(x.timestamp, 'yyyymmdd'), x));
-    let candidates = Array.from(idx.values());
-    candidates = snaps.filter(x => candidates.contains(x));
-    let result = this.electSnapshots(candidates, "day", cfg.backup.daily);
-    return result;
-  }
-
-  electWeeklySnapshots(snaps: Snapshot[], daily: Snapshot[]) : Snapshot[] {
-    let max = (daily.first() || snaps.first()).timestamp;
-    let candidates = snaps.filter(x => x.timestamp.getDay() == 0 && x.timestamp.getTime() < max.getTime());
-    return this.electSnapshots(candidates, "week", cfg.backup.weekly);
-  }
-
-  electMonthlySnapshots(snaps: Snapshot[], weekly: Snapshot[]) : Snapshot[] {
-    let max = (weekly.first() || snaps.first()).timestamp;
-    let candidates = snaps.filter(x => x.timestamp.getDate() == 1 && x.timestamp.getTime() < max.getTime());
-    return this.electSnapshots(candidates, "month", cfg.backup.monthly);
-  }
-
-  electSnapshots(snaps: Snapshot[], duration: DurationConstructor, limit: number) {
-    let result: Snapshot[] = [];
-    snaps.forEach(x => {
-      if (result.length == 0) { result.push(x); return; }
-
-      let last = result.last();
-      if (moment(x.timestamp).diff(moment(last.timestamp), duration) > 0)
-        result.push(x);
-    });
-
-    if (result.length > limit) result = result.slice(result.length - limit);
-
-    return result;
-  }
-
-  async removeSnapshots(vol: Volume, snaps: Snapshot[]) {
-    let names = snaps.map(x => x.name);
-    log.debug('Removing %d snapshots {pvc: %s, pv: %s} : [%s]', snaps.length, vol.pvc, vol.pv, names.join(','));
-    await this.invokeToolbox(`
-      for i in ${names.join(' ')}; do      
-        rbd -p ${cfg.backup.pool} --image=${vol.pv} snap rm --snap=$i
-      done 
-    `);
-  }
-
   getNamespaceModel(namespace: string) : INamespace {
     return this.model.get(namespace);
   }
 
   async loadNamespaceModel(namespace: string) {
+    let model : INamespace = this.getNamespaceModel(namespace);
+    if (model) return model;
+
     log.debug('Loading namespace %s', namespace);
 
     function unbox(x: any) {
@@ -227,11 +79,11 @@ export class Ceph {
       this.k8sClientApps.listNamespacedDeployment(namespace).then(unbox),
     ]);
 
-    let model: INamespace = {
+    model = {
       persistentVolumeClaims: pvcs,
       pods: pods,
       deployments: deployments,
-      statefulSets: statefulSets
+      statefulSets: statefulSets,
     };
 
     this.model.set(namespace, model);
@@ -250,28 +102,26 @@ export class Ceph {
 
     let model = this.getNamespaceModel(deployment.namespace);
 
-    let deployments = [].concat(model.deployments).concat(model.statefulSets)
-      //.filter(x => x.kind.match('Deployment|StatefulSet'))
-      .find(x => x.metadata.name == deployment.name);
-    let sel = deployments.spec.selector.matchLabels;
-    let pods = model.pods
-      //.filter(x => x.kind.match('Pod'))
-      .filter(x => this.isMatchLabels(sel, x.metadata.labels));
-    let claims = pods.map(x => x.spec.volumes
-      .filter(v => v.persistentVolumeClaim)
-      .map(v => v.persistentVolumeClaim.claimName)
-    ).flat();
-
-    let vols = claims.map(c => model.persistentVolumeClaims
-      //.filter(x => x.kind.match('PersistentVolumeClaim'))
-      .filter(x => x.metadata.name == c)
+    // all k8s deployments/statefulsets (other type are unsupported yet)
+    let all = [].concat(model.deployments).concat(model.statefulSets);
+    // resolve k8s entity
+    let dpl = all.find(x => x.metadata.name == deployment.name);
+    // find all PVC names related to this deployment (this will not contain PVC templates)
+    let claims = all
+      .filter(x => x.metadata.name == deployment.name)
+      .map(x => o(x.spec.template.spec.volumes, []).flat())
+      .flat()
+      .filter(x => x.persistentVolumeClaim)
+      .map(x => x.persistentVolumeClaim.claimName);
+    let vols = model.persistentVolumeClaims
       .filter(x => x.spec.storageClassName == cfg.backup.storageClassName)
+      // if the PVC is not found in claims, fallback to lookup by labels (this works work PVC templates)
+      .filter(x => claims.contains(x.metadata.name) || this.isMatchLabels(dpl.spec.selector.matchLabels, x.metadata.labels))
       .map(x => new Volume({
         deployment: deployment,
         pvc: x.metadata.name,
         pv: x.spec.volumeName,
-      }))
-    ).flat();
+      }));
 
     await vols.forEachAsync(async v => await this.resolveSnapshots(v));
 
@@ -281,57 +131,81 @@ export class Ceph {
   async resolveSnapshots(vol: Volume) : Promise<Snapshot[]> {
     if (vol.snapshots) return vol.snapshots;
 
-    log.debug(
-      'Resolving snapshots {namespace: %s, deployment: %s, pvc: %s, pv: %s}',
-      vol.deployment.namespace, vol.deployment.name, vol.pvc, vol.pv);
+    log.debug('Resolving snapshots for volume %s', vol.describe());
 
-    for (let i=1, attempts=2; i<=attempts; i++) {
-      let json = await this.invokeToolbox(`rbd -p ${cfg.backup.pool} --image=${vol.pv} snap ls --format=json`);
-      if (json.trim().length == 0) {
-        log.warn('Attempt %s/%s: Failed to resolve snapshots.', i, attempts);
-        continue;
+    let json = await this.invokeToolbox(`rbd -p ${cfg.backup.pool} --image=${vol.pv} snap ls --format=json`);
+    let parsed = JSON.parse(json).filter(x => x.name.match(cfg.backup.namePattern));
+
+    // validate snapshot list: native RBD order (by time) must be the same as our timestamped name ordering (YYYYMMDD-HHmm)
+    let names = parsed.map(x => x.name);
+    let sortedNames = parsed.map(x => x.name).sort((a,b) => a.localeCompare(b));
+    if (!names.equals(sortedNames)) throw Error(`Unexpected snapshot ordering: [${names.join(',')}]`);
+
+    vol.snapshots = parsed.map(x => new Snapshot({
+      name: x.name,
+      timestamp: utils.newMoment(x.name, cfg.backup.nameFormat).toDate(), //don't rely on x.timestamp, it may be invalid if snapshot is imported
+      volume: vol,
+      hasSnapshot: true,
+    }));
+
+    let files =
+      // list all files
+      await this.invokeToolbox(`dir="${vol.getDirectory()}"; mkdir -p "$dir" && cd "$dir" && ls -1s --block-size=1`)
+      // split result by lines
+        .then(result => result.match(/[^\r\n]*/g).filter(x => x.length > 0))
+        // process file names
+        .then(fnames => fnames.slice(1) // skip header
+          // convert to snapshot
+          .map(f => {
+            let fname = f.replace(/.*\s/g, '');
+            let fsize = parseInt(f.replace(/.*\s(\d+)\s.*/g, '$1'));
+            let timestamp = newMoment(fname, cfg.backup.nameFormat);
+            let name = newMoment(timestamp).format(cfg.backup.nameFormat);
+            let snap = new Snapshot({
+              name: name,
+              timestamp: timestamp.toDate(),
+              //backupType: name.indexOf('-ful') ? BackupType.full : name.indexOf('-dif') ? BackupType.differential : BackupType.incremental,
+              backupType: ['ful','dif','inc'].indexOf(fname.replace(/^\d{8}-\d{4}-(ful|dif|inc).*/g, '$1')),
+              file: fname,
+              fileSize: fsize,
+              hasFile: true,
+              hasSnapshot: vol.snapshots.find(s => s.name === name) != null,
+              volume: vol,
+            });
+            return snap;
+          })
+        );
+
+    // merge results, deduplicate
+    files.forEach(x => {
+      let snap = vol.snapshots.find(s => s.name === x.name);
+      if (snap) extend(snap, x);
+      else vol.snapshots.push(x);
+    });
+    vol.snapshots.forEach(x => {
+      if (!x.hasFile) x.hasFile = files.find(s => s.name === x.name) != null;
+    });
+
+    // sort
+    vol.snapshots = vol.snapshots.sort((a,b) => a.name > b.name ? 1 : -1);
+
+    // link dependencies: only existing file (new snapshots have type=undefined)
+    vol.snapshots.every((x, idx, arr) => {
+      if (x.backupType == BackupType.monthly) return true; // skip, no deps
+      if (x.hasFile) {
+        let name = x.file.replace(/.*(dif|inc)-(.*)\.gz/g, '$2');
+        x.dependsOn = vol.snapshots.find(x => x.name == name);
       }
-      vol.snapshots = JSON.parse(json).map(x => new Snapshot({
-        name: x.name,
-        timestamp: moment(x.name, 'YYYYMMDD-HHmm').toDate(), //don't rely on x.timestamp, it may be invalid if snapshot is imported
-        volume: vol,
-      }));
-      break;
-    }
+      return true;
+    });
 
+    // contents:
+    // - new (hasSnapshot=true, hasFile=false)
+    // - exported (hasSnapshot=true, hasFile=true)
+    // - archived (hasSnapshot=false, hasFile=true)
     return vol.snapshots;
   }
 
-  async backupSnapshot(image: string, fromSnapshot: string, snapshot: string, directory: string) {
-    await this.backupSemaphore.use(async () => {
-      let suffix = fromSnapshot ? `.since-${fromSnapshot}` : '';
-      let path = `${directory}/${snapshot}${suffix}.gz`;
-      let tmp = `${path}.tmp`;
-      let rbdFromSnap = fromSnapshot ? `--from-snap=${fromSnapshot}` : '';
-      let rbdSnap = snapshot ? `--snap=${snapshot}` : '';
-
-      for (let i=1, attempts=2; i<=attempts; i++) {
-
-        let result = await this.invokeToolbox(`
-          [[ -f ${tmp} ]] && echo "File exists : ${tmp}. Another backup in progress?" >&2 && exit 1
-          [[ -f ${path} ]] && echo "File exists: ${path}" && exit
-          mkdir -p ${directory}    
-          rbd -p ${cfg.backup.pool} --image ${image} export-diff ${rbdFromSnap} ${rbdSnap} - | gzip > ${tmp} && 
-            mv ${tmp} ${path} &&
-            echo "File created: $(du -h ${path})"
-          `
-        );
-
-        if (result.trim().length == 0) {
-          log.warn(`Attempt ${i}/${attempts}: Suspicious empty output for backup: ${path}`);
-          continue;
-        }
-
-        log.debug(result.trim());
-        break;
-      }
-    });
-  }
 
   env() {
     let proxy = cfg.proxy.host ? `http://${cfg.proxy.host}:${cfg.proxy.port}` : '';
@@ -383,8 +257,10 @@ export class Ceph {
       null /*stdin*/,
       false /*tty*/,
       (x: k8s.V1Status) => {
-        output = stdout.getContentsAsString();
-        if (x.status == 'Failure') {
+        if (x.status == 'Success') {
+          output = stdout.getContentsAsString() || '';
+        } else {
+          output = stdout.getContentsAsString() || '';
           error = stderr.getContentsAsString();
           code = parseInt(x.details.causes.find(c => c.reason == 'ExitCode').message);
         }
@@ -404,6 +280,7 @@ export class Ceph {
   }
 
   async resolveToolbox() {
+    if (this.toolbox) return;
     log.debug('Resolving rook-ceph-tools pod...');
     this.toolbox = await this.k8sClient.listNamespacedPod('rook-ceph')
       .then(x => x.body.items
@@ -420,8 +297,8 @@ export class Ceph {
 
   async report() {
     let report = await this.invokeToolbox(`
-      cd ${cfg.backup.path} 
-      find * -type f | sort | xargs ls -sh
+      cd ${cfg.backup.path}
+      find * -type f -name "*.gz*" | sort | xargs ls -sh
       df -h $PWD
     `);
     log.debug('File report:\n%s', report);
