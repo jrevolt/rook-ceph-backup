@@ -65,7 +65,7 @@ export class CephCore extends Ceph {
     let cfgMonthlyDayOfWeek = cfgMonthly.dayOfWeek ? moment.parseZone(cfgMonthly.dayOfWeek, 'ddd').toDate().getDay() : undefined;
     let cfgWeeklyDayOfWeek = cfgWeekly.dayOfWeek ? moment.parseZone(cfgWeekly.dayOfWeek, 'ddd').toDate().getDay() : undefined;
     let isMonthly = (x: Snapshot) : boolean => {
-      if (!latestFull || !latestFull.hasSnapshot) return true;
+      if (!latestFull) return true;
       let xday = x.timestamp.getDate();
       let mday =
         cfgMonthlyDayOfMonth != undefined ? cfgMonthlyDayOfMonth :
