@@ -2,6 +2,7 @@ import winston from 'winston';
 import ElasticSearch from 'winston-elasticsearch';
 import extend from 'extend';
 import {cfg} from "./cfg";
+import {Main} from "./main";
 
 interface LogContext {
   command? : string
@@ -20,7 +21,7 @@ const format = winston.format.combine(
   winston.format.splat(),
   winston.format.simple(),
   winston.format.timestamp(),
-  winston.format.printf(({ timestamp, level, label, message }) => `${timestamp}|${lvl(level)}|${logctx.command}| ${message}`),
+  winston.format.printf(({ timestamp, level, label, message }) => `${timestamp}|${lvl(level)}|${Main.instance.command.name()}| ${message}`),
 );
 
 const esformat = winston.format.combine(
@@ -39,11 +40,11 @@ function lvl(level) {
 }
 
 export const log = winston.createLogger({
-  level: 'debug',
+  level: cfg.quiet ? 'error' : cfg.debug ? 'debug' : 'info',
   transports: [
     new winston.transports.Console({ format: format }),
     cfg.elasticsearch.clientOpts.host ? new ElasticSearch(extend({ format: esformat }, cfg.elasticsearch)) : undefined,
-  ].filter(x=>x),
+  ].filter(x=>x) as winston.transport[],
 });
 
 ElasticSearch.prototype.end = async function () {

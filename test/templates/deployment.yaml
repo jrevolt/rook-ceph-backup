@@ -1,0 +1,157 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-deployment
+spec:
+  selector:
+    matchLabels:
+      app: test-deployment
+  template:
+    metadata:
+      labels:
+        app: test-deployment
+    spec:
+      containers:
+        - name: main
+          image: alpine
+          imagePullPolicy: IfNotPresent
+          tty: true
+          volumeMounts:
+            - mountPath: /vol1
+              name: vol1
+      volumes:
+        - name: vol1
+          persistentVolumeClaim:
+            claimName: test-deployment-vol1
+        - name: vol2
+          persistentVolumeClaim:
+            claimName: test-deployment-vol2
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: test-statefulset
+spec:
+  serviceName: test-statefulset
+  replicas: 2
+  selector:
+    matchLabels:
+      app: test-statefulset
+  template:
+    metadata:
+      labels:
+        app: test-statefulset
+    spec:
+      containers:
+        - name: main
+          image: alpine
+          imagePullPolicy: IfNotPresent
+          tty: true
+          volumeMounts:
+            - mountPath: /data
+              name: data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        storageClassName: rook-ceph-block
+        accessModes: [ ReadWriteOnce ]
+        resources:
+          requests:
+            storage: 1Gi
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: test-replicaset
+spec:
+  selector:
+    matchLabels:
+      app: test-replicaset
+  template:
+    metadata:
+      labels:
+        app: test-replicaset
+    spec:
+      containers:
+        - name: main
+          image: alpine
+          imagePullPolicy: IfNotPresent
+          tty: true
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: test-daemonset
+spec:
+  selector:
+    matchLabels:
+      app: test-daemonset
+  template:
+    metadata:
+      labels:
+        app: test-daemonset
+    spec:
+      containers:
+        - name: main
+          image: alpine
+          imagePullPolicy: IfNotPresent
+          tty: true
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: test-cronjob
+spec:
+  jobTemplate:
+    metadata:
+      name: main
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: main
+              image: alpine
+              imagePullPolicy: IfNotPresent
+              command: [ date ]
+  schedule: '* * * * *'
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: test-job
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: main
+          image: alpine
+          imagePullPolicy: IfNotPresent
+          command: [ date ]
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: test-deployment-vol1
+spec:
+  storageClassName: rook-ceph-block
+  accessModes: [ ReadWriteOnce ]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: test-deployment-vol2
+spec:
+  storageClassName: rook-ceph-block
+  accessModes: [ ReadWriteOnce ]
+  resources:
+    requests:
+      storage: 1Gi
+
+

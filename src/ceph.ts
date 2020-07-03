@@ -1,21 +1,18 @@
 import * as utils from './utils';
-import {newMoment, o} from './utils';
-import {BackupType, cfg, Deployment, Snapshot, Volume} from "./cfg";
+import {fail, newMoment} from './utils';
+import {BackupType, cfg, Deployment, Namespace, Snapshot, Volume} from "./cfg";
 import {spawn} from "child_process";
 import q from 'q';
 import {log} from "./log";
 import {Semaphore} from 'await-semaphore';
-import moment from 'moment';
-//import * as m from 'moment';
-//import * as mi from 'moment-interval';
 import * as k8s from '@kubernetes/client-node';
 import {V1Deployment, V1Pod, V1StatefulSet} from '@kubernetes/client-node';
 import * as streamBuffers from 'stream-buffers';
 import extend from 'extend';
-//import moment = require("moment");
-//import moment = require("moment");
+import {Writable} from "stream";
 
-interface INamespace {
+export interface INamespace {
+  persistentVolumes: k8s.V1PersistentVolume[],
   persistentVolumeClaims: k8s.V1PersistentVolumeClaim[],
   pods: V1Pod[],
   deployments: V1Deployment[],
@@ -28,8 +25,9 @@ export class Ceph {
   model: Map<string,INamespace> = new Map<string, INamespace>();
 
   // name of the rook-ceph-tools pod
-  toolbox : string;
+  toolbox ?: string;
 
+  private resolveToolboxSemaphore : Semaphore = new Semaphore(1)
   execSemaphore: Semaphore = new Semaphore(cfg.semaphore.exec);
   operatorSemaphore: Semaphore = new Semaphore(cfg.semaphore.operator);
   backupSemaphore: Semaphore = new Semaphore(cfg.semaphore.backup);
@@ -45,6 +43,7 @@ export class Ceph {
   }
 
   initializeKubernetesClient() {
+    log.debug(`Loading KubeConfig: ${cfg.kubectl.config}`)
     let config = new k8s.KubeConfig();
     config.loadFromFile(cfg.kubectl.config);
 
@@ -58,12 +57,19 @@ export class Ceph {
     this.k8sExec = exec;
   }
 
-  getNamespaceModel(namespace: string) : INamespace {
+  nameof(x:any) : string { return x?.metadata?.name || fail(`metadata.name? ${x}`) }
+
+  async listNamespaces() : Promise<Namespace[]> {
+    let all = await this.k8sClient.listNamespace().then(x => x.body.items.filter(i => i.metadata))
+    return all.map(x => new Namespace({name: x.metadata?.name}))
+  }
+
+  getNamespaceModel(namespace: string) : INamespace|undefined {
     return this.model.get(namespace);
   }
 
-  async loadNamespaceModel(namespace: string) {
-    let model : INamespace = this.getNamespaceModel(namespace);
+  async loadNamespaceModel(namespace: string) : Promise<INamespace> {
+    let model : INamespace|undefined = this.getNamespaceModel(namespace);
     if (model) return model;
 
     log.debug('Loading namespace %s', namespace);
@@ -72,14 +78,17 @@ export class Ceph {
       return x.body.items.filter(i => i.metadata);
     }
 
-    let [ pvcs, pods, statefulSets, deployments ] = await Promise.all([
+    let [ pvs, pvcs, pods, statefulSets, deployments ] = await Promise.all([
+      this.k8sClient.listPersistentVolume().then(unbox),
       this.k8sClient.listNamespacedPersistentVolumeClaim(namespace).then(unbox),
       this.k8sClient.listNamespacedPod(namespace).then(unbox),
       this.k8sClientApps.listNamespacedStatefulSet(namespace).then(unbox),
       this.k8sClientApps.listNamespacedDeployment(namespace).then(unbox),
+      // daemon sets: out of scope, cannot share volume (ReadWriteOnce)
     ]);
 
     model = {
+      persistentVolumes: pvs,
       persistentVolumeClaims: pvcs,
       pods: pods,
       deployments: deployments,
@@ -100,27 +109,34 @@ export class Ceph {
   async resolveVolumes(deployment: Deployment) : Promise<Volume[]> {
     if (deployment.volumes) return deployment.volumes;
 
-    let model = this.getNamespaceModel(deployment.namespace);
+    let model : INamespace = this.getNamespaceModel(deployment.namespace) as INamespace
 
     // all k8s deployments/statefulsets (other type are unsupported yet)
-    let all = [].concat(model.deployments).concat(model.statefulSets);
+    let all : V1Deployment[]|V1StatefulSet[] = model.deployments.concat(model.statefulSets)
     // resolve k8s entity
-    let dpl = all.find(x => x.metadata.name == deployment.name);
+    let dpl = all.find(x => x.metadata?.name == deployment.name);
     // find all PVC names related to this deployment (this will not contain PVC templates)
     let claims = all
-      .filter(x => x.metadata.name == deployment.name)
-      .map(x => o(x.spec.template.spec.volumes, []).flat())
+      .filter(x => x.metadata?.name == deployment.name)
+      .map(x => (x.spec?.template?.spec?.volumes || []).flat())
       .flat()
       .filter(x => x.persistentVolumeClaim)
-      .map(x => x.persistentVolumeClaim.claimName);
+      .map(x => x.persistentVolumeClaim?.claimName);
     let vols = model.persistentVolumeClaims
-      .filter(x => x.spec.storageClassName == cfg.backup.storageClassName)
+      .filter(x => x.spec?.storageClassName == cfg.backup.storageClassName)
       // if the PVC is not found in claims, fallback to lookup by labels (this works work PVC templates)
-      .filter(x => claims.contains(x.metadata.name) || this.isMatchLabels(dpl.spec.selector.matchLabels, x.metadata.labels))
+      .filter(x => claims.contains(x.metadata?.name) || this.isMatchLabels(dpl?.spec?.selector.matchLabels, x.metadata?.labels))
       .map(x => new Volume({
         deployment: deployment,
-        pvc: x.metadata.name,
-        pv: x.spec.volumeName,
+        pvc: x.metadata?.name,
+        //pv: x.spec?.volumeName,
+        image: model.persistentVolumes
+          .filter(pv => pv.metadata?.name == x.spec?.volumeName)
+          .map(pv => Object.assign({
+            name: pv.spec?.csi?.volumeHandle.replace(/^.*-rook-ceph-[0-9]+-(.*)/, 'csi-vol-$1'),
+            pool: pv.spec?.csi?.volumeAttributes?.pool,
+          }))
+          .first(),
       }));
 
     await vols.forEachAsync(async v => await this.resolveSnapshots(v));
@@ -133,7 +149,7 @@ export class Ceph {
 
     log.debug('Resolving snapshots for volume %s', vol.describe());
 
-    let json = await this.invokeToolbox(`rbd -p ${cfg.backup.pool} --image=${vol.pv} snap ls --format=json`);
+    let json = await this.invokeToolbox(`rbd snap ls --format=json ${vol.image.pool}/${vol.image.name} `);
     let parsed = JSON.parse(json).filter(x => x.name.match(cfg.backup.namePattern));
 
     // validate snapshot list: native RBD order (by time) must be the same as our timestamped name ordering (YYYYMMDD-HHmm)
@@ -154,10 +170,10 @@ export class Ceph {
     let files =
       // list all files
       await this.invokeToolbox(`dir="${vol.getDirectory()}"; mkdir -p "$dir" && cd "$dir" && ls -1s --block-size=1`)
-      // split result by lines
-        .then(result => result.match(/[^\r\n]*/g).filter(x => x.length > 0))
+        // split result by lines
+        .then(result => result.match(/[^\r\n]*/g)?.filter(x => x.length > 0))
         // process file names
-        .then(fnames => fnames.slice(1) // skip header
+        .then(fnames => fnames?.slice(1) // skip header
           // convert to snapshot
           .map(f => {
             let fname = f.replace(/.*\s/g, '');
@@ -177,7 +193,7 @@ export class Ceph {
             });
             return snap;
           })
-        );
+        ) as Snapshot[]
 
     // merge results, deduplicate
     files.forEach(x => {
@@ -245,11 +261,18 @@ export class Ceph {
   async podexec(namespace, pod, container, script) : Promise<string> {
 
     let stdout = new streamBuffers.WritableStreamBuffer();
-    let stderr = new streamBuffers.WritableStreamBuffer();
+    let stderrbuf = new streamBuffers.WritableStreamBuffer();
+    let stderr = new Writable({
+      write: (chunk, encoding, cb) => {
+        process.stderr.write(chunk, encoding)
+        stderrbuf.write(chunk, encoding, cb)
+      }
+    })
+
     let deferred = q.defer();
-    let output: string;
-    let error: string;
-    let code: number;
+    let output: string = '';
+    let error: string = '';
+    let code: number = 0;
     await this.k8sExec.exec(
       namespace,
       pod,
@@ -262,10 +285,11 @@ export class Ceph {
       (x: k8s.V1Status) => {
         if (x.status == 'Success') {
           output = stdout.getContentsAsString() || '';
+          //log.debug(stderr.getContentsAsString())
         } else {
           output = stdout.getContentsAsString() || '';
-          error = stderr.getContentsAsString();
-          code = parseInt(x.details.causes.find(c => c.reason == 'ExitCode').message);
+          error = stderrbuf.getContentsAsString();
+          code = parseInt(x.details?.causes?.find(c => c.reason == 'ExitCode')?.message || '0');
         }
 
         deferred.resolve();
@@ -284,16 +308,20 @@ export class Ceph {
 
   async resolveToolbox() {
     if (this.toolbox) return;
-    log.debug('Resolving rook-ceph-tools pod...');
-    this.toolbox = await this.k8sClient.listNamespacedPod('rook-ceph')
-      .then(x => x.body.items
-        .filter(x => x.metadata)
-        .filter(x => this.isMatchLabels({app: 'rook-ceph-tools'}, x.metadata.labels))
-        .map(x => x.metadata.name)
-        .first());
+    await this.resolveToolboxSemaphore.use(async () => {
+      if (this.toolbox) return;
+      log.debug('Resolving rook-ceph-tools pod...');
+      this.toolbox = await this.k8sClient.listNamespacedPod('rook-ceph')
+        .then(x => x.body.items
+          .filter(x => x.metadata)
+          .filter(x => this.isMatchLabels({app: 'rook-ceph-tools'}, x.metadata?.labels))
+          .map(x => x.metadata?.name)
+          .first())
+    })
   }
 
   async invokeToolbox(script: string) : Promise<string> {
+    if (!this.toolbox) await this.resolveToolbox()
     return await this.operatorSemaphore.use(async () =>
       await this.podexec("rook-ceph", this.toolbox, 'rook-ceph-tools', script));
   }

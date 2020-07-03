@@ -1,86 +1,85 @@
-import {Command} from "commander";
-import * as utils from "./utils";
-import {report} from "./utils";
-import {log, logctx} from "./log";
-import {CephBackup} from "./ceph-backup";
-import {CephRestore} from "./ceph-restore";
-import {CephRead} from "./ceph-read";
+import "./cfg"
+import "./log"
 
-utils.qdhImportGlobals();
+import {Options, registerCommands} from "./commands";
+import {log} from "./log";
+import {rethrow} from "./utils";
+import extend from "extend";
+import * as version from './version.json'
+import * as commander from 'commander'
+import {isCli, isUnitTest} from "./cfg";
 
-export let rbdtools = new Command('rbdtools');
+export class Main {
 
-// rbdtools
-//   .option('--dry-run')
-//   .option('-n, --namespace <namespace>')
-//   .option('-d, --deployment <deployment>')
-//   .option('-v, --volume <volume>')
-//   ;
+  private static $instance : Main
 
-rbdtools
-  .command('ls')
-  .description('List all supported deployments/volumes/snapshots')
-  .action(async () => await main(ls));
-rbdtools
-  .command('snapshot')
-  .description('Create snapshot for all supported volumes')
-  .action(async () => await main(snapshot));
-rbdtools
-  .command('backup')
-  .description('Export all volume snapshots, if missing in destination')
-  .option('--type <backupType>', 'Preferred backup type for most recent snapshot')
-  .action(async () => await main(backup));
-rbdtools
-  .command('consolidate')
-  .description('Remove obsolete backups, re-export missing ones')
-  .action(async () => await main(consolidate));
-rbdtools
-  .command('restore')
-  .option("-n, --namespace <namespace>", "Namespace name")
-  .option("-d, --deployment <deployment>", "Deployment or statefulset name")
-  .option("-v, --volume <volume>", "Persistent volume claim name or persistent volume / RBD image name")
-  .option("-s, --snapshot <snapshot>", "Name of the RBD snapshot to restore to")
-  // todo: --dry-run or --force or --preview
-  .description('Restore image from snapshot')
-  .action(async (cmd) => await main(restore, cmd.opts()));
-
-// on invalid command
-rbdtools.on('command:*', (cmd) => help(2, `ERROR: Invalid command: ${cmd}`));
-
-// default: show help
-if (!process.argv.slice(2).length) { rbdtools.help(); log.end(); }
-
-// parse & execute commands/actions
-rbdtools.parse(process.argv);
-
-async function ls() { await new CephRead().listAll(); }
-async function snapshot() { await new CephBackup().createSnapshotAll(); }
-async function backup() { await new CephBackup().backupVolumeAll(); }
-async function consolidate() { await new CephBackup().consolidateAll(); }
-async function restore(opts:any) { await new CephRestore().restoreFromSnapshot(opts.namespace, opts.deployment, opts.volume, opts.snapshot); }
-
-async function main(action: any, opts?: any) {
-  try {
-    logctx.command = action.name;
-    log.debug('Executing command %s', action.name);
-    await action(opts);
-  } catch (e) {
-    report(e);
-    process.exitCode = 1;
-  } finally {
-    log.end();
+  static get instance() : Main {
+    return Main.$instance || (Main.$instance = new Main())
   }
+
+  readonly program : commander.Command = new commander.Command('rbdtools')
+    .description('Rook Ceph Backup Tools')
+    .version(this.versionString())
+
+  command : commander.Command = this.program
+
+  options() { return this.program.opts() as Options }
+
+  async run(args?: string[]) {
+    if (args) args.unshift('dummy-exe-name', 'dummy-script-name')
+    if (!args) args = process.argv
+
+    registerCommands(this)
+
+    let result = await this.program.parseAsync(args)
+
+    return result
+  }
+
+  wrap(action) {
+    const main = this;
+    return async function () {
+      let started = Date.now();
+      let error: Error | undefined;
+      let cmd = main.command = arguments[arguments.length - 1]
+
+      try {
+        let opts: Options = extend({}, cmd.parent.opts(), cmd.opts())
+        let args: any[] = [opts]
+        for (let i = 0; i < arguments.length - 1; i++) args.push(arguments[i])
+
+        log.level = opts.quiet ? 'error' : opts.debug ? 'debug' : log.level
+
+        log.info(`${main.program.name()} ${main.versionString()})`)
+        log.info('Executing command [%s], options: %s', cmd.name(), main.optionsString(args));
+
+        // @ts-ignore
+        await action.apply(this, args);
+
+      } catch (e) {
+        error = e;
+        if (isUnitTest()) rethrow(e)
+        process.exitCode = 3;
+
+      } finally {
+        let elapsed = Date.now() - started;
+        let logm = error ? log.error : log.info;
+        let err = error ? error.stack : '';
+        logm('Finished command [%s] in %d msec. %s', cmd.name(), elapsed, err);
+      }
+    }
+  }
+
+  versionString() : string {
+    return `${version["FullSemVer"]} (${version["CommitDate"]}, ${version["ShortSha"]})`
+  }
+
+  optionsString(src:any[]) : string {
+    let dst = extend(true,[], src)
+    delete dst[0]["version"]
+    return JSON.stringify(dst)
+  }
+
 }
 
-function help(code:number, msg?:string) {
-  if (msg) console.error(msg);
-  rbdtools.outputHelp();
-  process.exitCode = code;
-  log.end();
-}
-
-
-
-
-
-
+if (isCli()) Main.instance.run().then()

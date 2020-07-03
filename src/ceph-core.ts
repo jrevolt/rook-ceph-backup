@@ -1,9 +1,10 @@
-import {Ceph} from "./ceph";
+import {Ceph, INamespace} from "./ceph";
 import {BackupType, cfg, Deployment, Namespace, Snapshot, Volume} from "./cfg";
 import moment from "moment";
 import * as utils from "./utils";
-import {newMoment} from "./utils";
+import {fail, newMoment} from "./utils";
 import {log} from "./log";
+import assert from "assert";
 
 export class CephCore extends Ceph {
 
@@ -20,18 +21,37 @@ export class CephCore extends Ceph {
   }
 
   async loadNamespaces() : Promise<Namespace[]> {
-    let namespaces : Namespace[] = [];
-    await Object.keys(cfg.deployments).forEachAsync(async (namespace) =>
-      await Object.keys(cfg.deployments[namespace]).forEachAsync(async (deployment) => {
-        let ns = namespaces.find(x => x.name == namespace);
-        if (!ns) { ns = new Namespace({ name: namespace }); namespaces.push(ns); }
-        let d = new Deployment(deployment, namespace);
+
+    this.namespaces = []
+
+    Object.keys(cfg.namespaces).forEach(ns => this.namespaces.push(new Namespace({name: ns})))
+
+    await this.namespaces.forEachAsync(async (ns) => {
+      await this.loadNamespaceModel(ns.name)
+      await Object.keys(cfg.deployments[ns.name]).forEachAsync(async (deployment) => {
+        let d = new Deployment(deployment, ns.name);
         ns.deployments.push(d);
         await this.resolveVolumes(d).then(async vols =>
           await vols.forEachAsync(async v =>
             await this.consolidateSnapshots(v.snapshots)));
-      }));
-    return (this.namespaces = namespaces);
+      })
+    })
+    return this.namespaces
+  }
+
+
+
+  async loadNamespace(ns:Namespace) : Promise<Namespace> {
+    let model = await this.loadNamespaceModel(ns.name);
+    ns.deployments.pushAll(
+      [model.deployments, model.statefulSets].flat().map(x =>
+        new Deployment(x?.metadata?.name as string, ns.name)));
+    await ns.deployments.forEachAsync(async (d) =>
+      await this.resolveVolumes(d).then(async (vols) =>
+        await vols.forEachAsync(async (v) =>
+          await this.resolveSnapshots(v))))
+    this.model[ns.name] = model
+    return ns
   }
 
   async processAllDeployments(action: (d:Deployment)=>void) {
@@ -57,7 +77,7 @@ export class CephCore extends Ceph {
 
     // identify backup types
     let latestFull: Snapshot;// = snaps.filter(x => x.backupType == BackupType.full).last();
-    let latestDiff: Snapshot;// = snaps.filter(x => x.backupType == BackupType.differential).last();
+    let latestDiff: Snapshot|undefined;// = snaps.filter(x => x.backupType == BackupType.differential).last();
     let cfgMonthly = cfg.backup.monthly;
     let cfgWeekly = cfg.backup.weekly;
     let cfgDaily = cfg.backup.daily;
@@ -76,7 +96,7 @@ export class CephCore extends Ceph {
     let isWeekly = (x: Snapshot) : boolean => {
       if (!latestDiff) return true;
       let xday = x.timestamp.getDay();
-      return xday == cfgWeeklyDayOfWeek || (xday > cfgWeeklyDayOfWeek && newMoment(x.timestamp).week() > newMoment(latestDiff.timestamp).week());
+      return xday == cfgWeeklyDayOfWeek || (/*xday > cfgWeeklyDayOfWeek &&*/ newMoment(x.timestamp).week() > newMoment(latestDiff.timestamp).week());
     };
     snaps.forEach(x => {
       if (isMonthly(x)) {
@@ -141,14 +161,16 @@ export class CephCore extends Ceph {
 
   async removeSnapshots(vol: Volume, snaps: Snapshot[]) {
     let names = snaps.map(x => x.name);
-    log.debug('Removing %d snapshots in volume %s : [%s]', snaps.length, vol.describe(), names.join(','));
-    if (names.length == 0) return;
+    if (names.length == 0) {
+      log.debug('No snapshots to remove: %s', vol.describe())
+      return
+    }
+    log.info('Removing %d snapshots in volume %s : [%s]', snaps.length, vol.describe(), names.join(','));
     await this.invokeToolbox(`
       for i in ${names.join(' ')}; do
-        rbd -p ${cfg.backup.pool} --image=${vol.pv} snap rm --snap=$i
+        rbd snap rm ${vol.image.pool}/${vol.image.name}@$i
       done
     `);
   }
-
 
 }

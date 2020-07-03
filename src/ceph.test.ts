@@ -1,11 +1,11 @@
 import {BackupType, cfg, Snapshot, Volume} from "./cfg";
 import moment from "moment";
 import extend from "extend";
-import * as utils from "./utils";
 import {findFirstDayOfMonthByWeekday, Weekday} from "./utils";
 import {CephCore} from "./ceph-core";
+import {log} from "./log";
+import "./testutils";
 
-utils.qdhImportGlobals();
 
 test('findFirstDayOfMonthByWeekday', () => {
   let fmt = 'YYYYMMDD';
@@ -43,12 +43,13 @@ test('consolidateSnapshots: check days', () => {
 });
 
 test('consolidateSnapshots: random', () => {
-  let iterations = 3;
+  let iterations = 1;
   while (iterations-- > 0) {
-    let count = Math.floor(Math.random() * 999) + 120;
+    let count = 1617//Math.floor(Math.random() * 1500) + 200;
+    log.debug('count=%s', count)
     let snaps = new CephCore().consolidateSnapshots(generateSnapshots('20190101', count));
     expect(snaps.filter(x => x.backupType == BackupType.monthly).length).toBe(cfg.backup.monthly.max);
-    expect(snaps.filter(x => x.backupType == BackupType.weekly).length).toBe(cfg.backup.weekly.max);
+    expect(snaps.filter(x => x.backupType == BackupType.weekly).length).toBeWithinRange(cfg.backup.weekly.max, cfg.backup.weekly.max+1);
     expect(snaps.filter(x => x.backupType == BackupType.daily).length).toBeGreaterThanOrEqual(cfg.backup.daily.max);
     expect(new Set(snaps.filter(x => x.backupType == BackupType.monthly).map(x => x.timestamp.getDate()))).toStrictEqual(new Set([1]));
     expect(snaps.filter(x => x.backupType == BackupType.weekly).map(x => x.timestamp.getDay()).last()).toBe(Weekday.Sunday);
@@ -68,6 +69,7 @@ test('consolidateSnapshots: evictions', () => {
   expect(result.filter(x => x.backupType == BackupType.daily && x.hasSnapshot && !x.isDeleteSnapshot).length).toEqual(1);
   expect(result.filter(x => x.backupType == BackupType.daily && x.hasSnapshot && !x.isDeleteSnapshot).first().name).toBe('20200206');
 });
+
 
 // test('resolveFromSnapshot: inc', () => {
 //   let snaps = generateSnapshots('20190102', 10, <Snapshot>{backupType: BackupType.incremental});
@@ -100,7 +102,7 @@ function createSnapshots(names : string[]) : Snapshot[] {
   return names.map(x => new Snapshot({name: x, timestamp: moment(x, 'YYYYMMDD').toDate()}));
 }
 
-function generateSnapshots(initial: string, count: number, template : Snapshot = null) : Snapshot[] {
+function generateSnapshots(initial: string, count: number, template ?: Snapshot) : Snapshot[] {
   let snaps : Snapshot[] = [];
   let vol = new Volume({snapshots: snaps});
   let format = 'YYYYMMDD';

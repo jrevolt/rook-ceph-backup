@@ -2,10 +2,9 @@ import TraceError from "trace-error";
 import {log, logctx} from "./log";
 import moment, {Moment, MomentFormatSpecification, MomentInput} from "moment";
 import {BackupType} from "./cfg";
-import {rbdtools} from "./main";
+//import {rbdtools} from "./main";
 import DurationConstructor = moment.unitOfTime.DurationConstructor;
 
-export function qdhImportGlobals() {}
 
 declare global {
   interface String {
@@ -19,6 +18,7 @@ declare global {
     contains(t:T) : boolean;
     remove(t:T) : T[];
     equals(t:T) : boolean;
+    pushAll(t:T[]);
   }
   interface Map<K,V> {
     forEachAsync(action: (item: V) => void): void;
@@ -57,6 +57,10 @@ Array.prototype.equals = function (t) {
   return this.length == t.length && this.every((x,idx,arr) => x == t[idx]);
 };
 
+Array.prototype.pushAll = function (t) {
+  t.forEach(x => this.push(x))
+}
+
 String.prototype.truncate = function (max) {
   return this.substring(0, Math.min(this.length, max));
 };
@@ -64,8 +68,8 @@ String.prototype.truncate = function (max) {
 export class ParamError extends Error {
 }
 
-export function fail(message) : boolean {
-  throw new ParamError(message);
+export function fail<T>(message?) : T|never {
+  throw new ParamError(message ?? 'no message');
 }
 
 export function report(err) {
@@ -122,7 +126,3 @@ export function newMoment(input?: MomentInput, format?: MomentFormatSpecificatio
   return moment(input, format);
 }
 
-export function help() {
-  let c = rbdtools.commands.find(x => x._name == logctx.command);
-  c ? c.help() : rbdtools.help();
-}

@@ -9,8 +9,9 @@ k8s:
     daily:   { max: 5 }
 
   kubectl:
-    config: config/kubectl.devtest.local.yaml
+    config: config/kubectl.local.yaml
 
-  deployments:
-    mediworx-tools:
-      alpine1:
+  .deployments:
+    rook-ceph-backup-test:
+      test-deployment:
+      test-statefulset:

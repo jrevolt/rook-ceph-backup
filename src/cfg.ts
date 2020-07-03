@@ -1,26 +1,35 @@
 import config from 'config';
-import deepExtend from 'deep-extend';
 import {ElasticsearchTransportOptions} from "winston-elasticsearch";
-import moment = require("moment");
-import printf = require("printf");
+import moment from "moment";
+import printf from "printf";
 
-export const cfg : Configuration = deepExtend({}, config.get('k8s'));
+export function isUnitTest() {
+  return process.env.NODE_ENV == "test" && process.env.JEST_WORKER_ID != undefined
+}
 
-export interface Configuration {
-  debug: boolean,
+export function isCli() {
+  return !isUnitTest()
+}
+
+export class Configuration {
+
+  quiet: boolean
+  debug: boolean
+  dryRun: boolean
+
   proxy: {
     host: string,
     port: number,
-  },
+  }
   kubectl: {
     config: string,
-  },
+  }
   rancher: {
     url: string
     accessKey: string
     secretKey: string
-  },
-  elasticsearch: ElasticsearchTransportOptions,
+  }
+  elasticsearch: ElasticsearchTransportOptions
   backup: {
     nameFormat:  string, // YYYYMMDD-HHmm
     namePattern: string, // regexp: ^\d{8}-\d{4}$
@@ -33,14 +42,29 @@ export interface Configuration {
     // full:          { interval: string, max: number, preferredDayOfMonth: number },
     // differential : { interval: string, max: number, preferredDayOfWeek: number },
     // incremental:   { interval: string, max: number },
-  },
+  }
 
   semaphore: {
     exec: number,
     operator: number,
     backup: number,
-  },
-  deployments: any;
+  }
+  deployments: any
+
+  private static $instance : Configuration
+
+  static get instance() : Configuration {
+    return this.$instance || (this.$instance = new Configuration())
+  }
+
+  constructor() {
+    process.env['ALLOW_CONFIG_MUTATIONS']='true'
+    Object.assign(this, config.get('k8s'))
+  }
+
+  get namespaces() {
+    return Object.keys(this.deployments || {})
+  }
 }
 
 export class Namespace {
@@ -70,8 +94,13 @@ export enum Kind { Deployment, statefulset }
 
 export class Volume {
   deployment: Deployment;
-  pv: string;
+  //pv: string;
   pvc: string;
+  image: {
+    pool: string
+    name: string
+  }
+  pool: string
   snapshots: Snapshot[];
 
   constructor(src: Partial<Volume>) {
@@ -79,11 +108,11 @@ export class Volume {
   }
 
   getDirectory() {
-    return `${cfg.backup.path}/${this.deployment.namespace}/${this.deployment.name}/${this.pvc}-${this.pv}`;
+    return `${cfg.backup.path}/${this.deployment.namespace}/${this.deployment.name}/${this.pvc}/${this.image.name}`;
   }
 
   describe() {
-    return `${this.deployment.namespace}/${this.deployment.name}/${this.pvc} (${this.pv})`;
+    return `${this.deployment.namespace}/${this.deployment.name}/${this.pvc} (${this.image.pool}/${this.image.name})`;
   }
 
 }
@@ -117,7 +146,7 @@ export class Snapshot {
   isDeleteSnapshot : boolean = false;
   isDeleteFile : boolean = false;
 
-  dependsOn : Snapshot;
+  dependsOn ?: Snapshot;
 
   constructor(src: Partial<Snapshot>) {
     Object.assign(this, src);
@@ -171,5 +200,4 @@ export class Snapshot {
 }
 
 
-
-
+export const cfg = Configuration.instance
