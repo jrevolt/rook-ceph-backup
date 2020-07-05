@@ -69,5 +69,38 @@ export class CephRead extends CephCore {
     return report.join('\n');
   }
 
+  async diskUsage(namespace?:string, workload?:string) {
+    // load/filter
+    let namespaces = (await this.listNamespaces()).filter(n => !namespace || n.name == namespace)
+    await namespaces.forEachAsync(async (ns) => await this.loadNamespace(ns));
+    namespaces.forEach(n => n.deployments = n.deployments.filter(d => !workload || d.name == workload))
+
+    // sort
+    namespaces.sort((a, b) => a.name.localeCompare(b.name));
+    namespaces.forEach(n => n.deployments.sort((a, b) => a.name.localeCompare(b.name)));
+    namespaces.flatMap(n => n.deployments).forEach(d => d.volumes.sort((a, b) => a.pvc.localeCompare(b.pvc)))
+
+    // render
+    let report : string[] = [];
+    namespaces
+      .filter(ns => ns.deployments.flatMap(d => d.volumes).length > 0)
+      .forEach(ns => {
+        report.push(printf('[%4s] %s', getFileSizeString(ns.du()), ns.name));
+        ns.deployments
+          .filter(d => d.volumes.length > 0)
+          .forEach(d => {
+            report.push(printf('[%4s] %2s%s', getFileSizeString(d.du()), '', d.name));
+            d.volumes.forEach(v => {
+              report.push(printf('[%4s] %4s%s (%s)', getFileSizeString(v.du()), '', v.pvc, v.image.name));
+            })
+          })
+      });
+    let total = namespaces.map(n => n.du()).reduce((a,b) => a+b, 0)
+    let dfreport = await this.invokeToolbox(`df -h ${cfg.backup.path}`)
+    report.push(printf('[%4s] [total]', getFileSizeString(total)))
+    report.push(dfreport)
+    return report.join('\n');
+
+  }
 
 }

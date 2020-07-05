@@ -75,6 +75,10 @@ export class Namespace {
     Object.assign(this, src);
   }
 
+  du() : number {
+    return this.deployments.map(d => d.du()).reduce((a,b) => a+b, 0)
+  }
+
 }
 
 export class Deployment {
@@ -88,6 +92,11 @@ export class Deployment {
     this.name = name;
     this.namespace = namespace;
   }
+
+  du() : number {
+    return this.volumes.map(v => v.du()).reduce((a,b) => a+b, 0)
+  }
+
 }
 
 export enum Kind { Deployment, statefulset }
@@ -113,6 +122,10 @@ export class Volume {
 
   describe() {
     return `${this.deployment.namespace}/${this.deployment.name}/${this.pvc} (${this.image.pool}/${this.image.name})`;
+  }
+
+  du() : number {
+    return this.snapshots.map(s => s.fileSize).reduce((a,b) => a+b, 0)
   }
 
 }

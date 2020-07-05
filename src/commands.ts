@@ -25,6 +25,12 @@ export function registerCommands(main: Main) {
     .option('-a, --all-snapshots')
     .action(main.wrap(list))
   main.program
+    .command('du')
+    .description("Report disk usage for namespaces/workloads/volumes")
+    .option('-n, --namespace <namespace>')
+    .option('-w, --workload <workload>')
+    .action(main.wrap(du))
+  main.program
     .command('snapshot')
     .description("Create new snapshot of a volume's image")
     .option('-w, --workload <workload>')
@@ -94,6 +100,17 @@ export interface ListOptions extends Options {
 export async function list(opts: ListOptions) {
   opts.namespace || opts.allNamespaces || err('Namespace?')
   let result = await new CephRead().list(opts.namespace, opts.workload, opts.allSnapshots)
+  console.log(result)
+}
+
+export interface DuOptions extends Options {
+  namespace: string
+  workload: string
+}
+
+export async function du(opts) {
+  opts.namespace || opts.allNamespaces || err('Namespace?')
+  let result = await new CephRead().diskUsage(opts.namespace, opts.workload)
   console.log(result)
 }
 

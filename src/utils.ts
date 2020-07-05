@@ -126,3 +126,14 @@ export function newMoment(input?: MomentInput, format?: MomentFormatSpecificatio
   return moment(input, format);
 }
 
+export function getFileSizeString(x?:number) {
+  if (!x) return 'NA';
+
+  let u = 'B';
+  if (x >   0) { x = Math.round(x/1024); u='K' }
+  if (x > 999) { x = Math.round(x/1024); u='M' }
+  if (x > 999) { x = Math.round(x/1024); u='G' }
+  x = Math.max(1, x);
+  return `${x}${u}`;
+}
+
