@@ -26,7 +26,7 @@ export class CephRead extends CephCore {
     return report.join('\n')
   }
 
-  async list(namespace?:string, workload?:string, allSnapshots:boolean=false) {
+  private async loadAndFilterNamespaces(namespace: string | undefined, workload: string | undefined) {
     // load/filter
     let namespaces = (await this.listNamespaces()).filter(n => !namespace || n.name == namespace)
     await namespaces.forEachAsync(async (ns) => await this.loadNamespace(ns));
@@ -36,6 +36,11 @@ export class CephRead extends CephCore {
     namespaces.sort((a, b) => a.name.localeCompare(b.name));
     namespaces.forEach(n => n.deployments.sort((a, b) => a.name.localeCompare(b.name)));
     namespaces.flatMap(n => n.deployments).forEach(d => d.volumes.sort((a, b) => a.pvc.localeCompare(b.pvc)))
+    return namespaces;
+  }
+
+  async list(namespace?:string, workload?:string, allSnapshots:boolean=false) {
+    let namespaces = await this.loadAndFilterNamespaces(namespace, workload);
 
     // render
     let report : string[] = [];
@@ -70,15 +75,7 @@ export class CephRead extends CephCore {
   }
 
   async diskUsage(namespace?:string, workload?:string) {
-    // load/filter
-    let namespaces = (await this.listNamespaces()).filter(n => !namespace || n.name == namespace)
-    await namespaces.forEachAsync(async (ns) => await this.loadNamespace(ns));
-    namespaces.forEach(n => n.deployments = n.deployments.filter(d => !workload || d.name == workload))
-
-    // sort
-    namespaces.sort((a, b) => a.name.localeCompare(b.name));
-    namespaces.forEach(n => n.deployments.sort((a, b) => a.name.localeCompare(b.name)));
-    namespaces.flatMap(n => n.deployments).forEach(d => d.volumes.sort((a, b) => a.pvc.localeCompare(b.pvc)))
+    let namespaces = await this.loadAndFilterNamespaces(namespace, workload);
 
     // render
     let report : string[] = [];
