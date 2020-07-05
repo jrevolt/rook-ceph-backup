@@ -7,7 +7,7 @@ import assert from "assert";
 
 export class CephBackup extends CephRead {
 
-  async createSnapshotAll(namespace?:string, deployment?:string) {
+  async processVolumesAll(namespace:string|undefined, deployment:string|undefined, action:(v:Volume)=>void) {
     let namespaces = (await this.listNamespaces())
       .filter(ns => !namespace || ns.name == namespace)
     await namespaces.forEachAsync(async (ns) => await this.loadNamespace(ns));
@@ -16,7 +16,11 @@ export class CephBackup extends CephRead {
       .flatMap(ns => ns.deployments)
       .filter(d => !deployment || d.name == deployment)
       .flatMap(d => d.volumes)
-      .forEachAsync(async (v) => await this.createSnapshot(v))
+      .forEachAsync(async (v) => await action(v))
+  }
+
+  async createSnapshotAll(namespace?:string, deployment?:string) {
+    await this.processVolumesAll(namespace, deployment, async (v) => await this.createSnapshot(v))
   }
 
   async createSnapshot(vol: Volume) {
@@ -37,15 +41,7 @@ export class CephBackup extends CephRead {
   }
 
   async backupVolumeAll(namespace?:string, deployment?:string) {
-    let namespaces = (await this.listNamespaces())
-      .filter(ns => !namespace || ns.name == namespace)
-    await namespaces.forEachAsync(async (ns) => await this.loadNamespace(ns));
-    await namespaces
-      .filter(ns => !namespace || ns.name == namespace)
-      .flatMap(ns => ns.deployments)
-      .filter(d => !deployment || d.name == deployment)
-      .flatMap(d => d.volumes)
-      .forEachAsync(async (v) => await this.backupVolume(v))
+    await this.processVolumesAll(namespace, deployment, async (v) => await this.backupVolume(v))
   }
 
   async backupVolume(vol: Volume) {
@@ -80,15 +76,7 @@ export class CephBackup extends CephRead {
   }
 
   async consolidateAll(namespace?:string, deployment?:string) {
-    let namespaces = (await this.listNamespaces())
-      .filter(ns => !namespace || ns.name == namespace)
-    await namespaces.forEachAsync(async (ns) => await this.loadNamespace(ns));
-    await namespaces
-      .filter(ns => !namespace || ns.name == namespace)
-      .flatMap(ns => ns.deployments)
-      .filter(d => !deployment || d.name == deployment)
-      .flatMap(d => d.volumes)
-      .forEachAsync(async (v) => await this.consolidate(v))
+    await this.processVolumesAll(namespace, deployment, async (v) => await this.consolidate(v))
   }
 
   async consolidate(vol: Volume) {

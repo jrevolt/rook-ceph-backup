@@ -62,16 +62,6 @@ export class CephCore extends Ceph {
         await action(d)));
   }
 
-  async processAllVolumes(action: (vol: Volume) => void) {
-    let namespaces: Namespace[] = [];
-    await this.processAllNamespaces(x => namespaces.push(x));
-    await namespaces.forEachAsync(async ns =>
-      await ns.deployments.forEachAsync(async d =>
-        await d.volumes.forEachAsync(async v =>
-          await action(v)
-        )));
-  }
-
   consolidateSnapshots(snaps: Snapshot[]) : Snapshot[] {
     if (snaps.length == 0) return snaps; // nothing to do here
 
