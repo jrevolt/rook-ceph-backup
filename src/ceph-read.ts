@@ -1,8 +1,7 @@
-import {Namespace} from "./cfg";
+import {Snapshot} from "./cfg";
 import {CephCore} from "./ceph-core";
 import {log} from "./log";
 import printf = require("printf");
-import {renameSync} from "fs";
 
 export class CephRead extends CephCore {
 
@@ -26,7 +25,7 @@ export class CephRead extends CephCore {
     return report.join('\n')
   }
 
-  async list(namespace?:string, workload?:string) {
+  async list(namespace?:string, workload?:string, allSnapshots:boolean=false) {
     // load/filter
     let namespaces = (await this.listNamespaces()).filter(n => !namespace || n.name == namespace)
     await namespaces.forEachAsync(async (ns) => await this.loadNamespace(ns));
@@ -49,8 +48,15 @@ export class CephRead extends CephCore {
             report.push(printf('%2s%s', '', d.name));
             d.volumes.forEach(v => {
               report.push(printf('%4s%s (%s)', '', v.pvc, v.image.name));
-              if (v.snapshots.length == 0) report.push(printf('%6s%s', '', '(no snapshots)'))
-              else v.snapshots.forEach(s => {
+              if (v.snapshots.length == 0) {
+                report.push(printf('%6s%s', '', '(no snapshots)'))
+                return
+              }
+              let latest : Snapshot[] = []
+              for (let x : Snapshot|undefined = v.snapshots.last(); x; x = x.dependsOn) latest.push(x)
+              v.snapshots
+                .filter(x => allSnapshots || latest.contains(x))
+                .forEach(s => {
                 // minor fixup for reporting to avoid user confusion:
                 s.isDeleteSnapshot = s.hasSnapshot && s.isDeleteSnapshot;
                 s.isDeleteFile = s.hasFile && s.isDeleteFile;

@@ -22,6 +22,7 @@ export function registerCommands(main: Main) {
     .description("List namespaces/workloads/volumes/images/snapshots")
     .option('-n, --namespace <namespace>')
     .option('-w, --workload <workload>')
+    .option('-a, --all-snapshots')
     .action(main.wrap(list))
   main.program
     .command('snapshot')
@@ -87,11 +88,12 @@ export async function search(opts:SearchOptions, q:string = '.*') {
 export interface ListOptions extends Options {
   namespace: string
   workload: string
+  allSnapshots: boolean
 }
 
 export async function list(opts: ListOptions) {
   opts.namespace || opts.allNamespaces || err('Namespace?')
-  let result = await new CephRead().list(opts.namespace, opts.workload)
+  let result = await new CephRead().list(opts.namespace, opts.workload, opts.allSnapshots)
   console.log(result)
 }
 
