@@ -22,6 +22,7 @@ RUN npm ci -d
 FROM base as build
 ADD . ./
 RUN npm run build
+RUN node .build/main.js -V
 
 FROM base as runtime
 COPY --from=build /app/.build/ /app/

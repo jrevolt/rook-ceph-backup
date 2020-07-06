@@ -7,6 +7,7 @@ import {rethrow} from "./utils";
 import extend from "extend";
 import * as commander from 'commander'
 import {isCli, isUnitTest} from "./cfg";
+import * as version from './version.json'
 
 export class Main {
 
@@ -70,12 +71,7 @@ export class Main {
   }
 
   versionString() : string {
-    try {
-      let version = require('version.json') || {}
-      return `${version["FullSemVer"]} (${version["CommitDate"]}, ${version["ShortSha"]})`
-    } catch (err) {
-      return `unknown version: ${err.message.split(/\r?\n/).first()}`
-    }
+    return `${version["FullSemVer"]} (${version["CommitDate"]}, ${version["ShortSha"]})`
   }
 
   optionsString(src:any[]) : string {
