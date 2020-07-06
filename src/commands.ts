@@ -12,6 +12,7 @@ export function registerCommands(main: Main) {
     .option('-d, --debug')
     .option('-q, --quiet')
     .option('-n, --namespace <namespace>')
+    .option('-w, --workload <workload>')
     .option('-A, --all-namespaces')
   main.program
     .command('search [query]')
@@ -61,6 +62,12 @@ export function registerCommands(main: Main) {
     .option('-v, --volume <volume>')
     .option('-s, --snapshot <snapshot>')
     .action(main.wrap(removeSnapshots))
+  main.program
+    .command('remove-backups')
+    .description("Remove backup archives")
+    .option('-n, --namespace [namespace]')
+    .option('-w, --workload [workload]')
+    .action(main.wrap(removeBackupArchives))
 }
 
 async function notYetImplemented(opts:any) {
@@ -77,6 +84,7 @@ export class Options {
   quiet: boolean
   debug: boolean
   namespace: string
+  workload: string
   allNamespaces: boolean
 }
 
@@ -166,4 +174,13 @@ export interface RemoveSnapshotOptions extends  Options {
 export async function removeSnapshots(opts:RemoveSnapshotOptions) {
   opts.namespace || opts.allNamespaces || err('Namespace?')
   await new CephBackup().cliRemoveSnapshots(opts.namespace, opts.workload, opts.volume, opts.snapshot)
+}
+
+export interface RemoveBackupsOptions extends Options {
+}
+
+export async function removeBackupArchives(opts:RemoveBackupsOptions) {
+  opts.namespace || err('Namespace?')
+  opts.workload || err('Workload?')
+  await new CephBackup().removeBackupArchives(opts.namespace, opts.workload)
 }

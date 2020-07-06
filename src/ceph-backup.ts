@@ -138,4 +138,20 @@ export class CephBackup extends CephRead {
 
   }
 
+  async removeBackupArchives(namespace:string, workload:string) {
+    await this.processVolumesAll(namespace, workload, async (v) => {
+      let toDelete = v.snapshots.filter(s => s.hasFile)
+      if (toDelete.length == 0) {
+        log.info('Nothing to delete in volume %s', v.describe())
+        return
+      }
+      log.info('Deleting %d backup archives in volume %s', toDelete.length, v.describe())
+      let cmds = toDelete
+        .map(s => `rm -vf ${v.getDirectory()}/${s.file}`)
+        .join('\n')
+      let out = await this.invokeToolbox(cmds)
+      log.debug(out)
+    })
+  }
+
 }
