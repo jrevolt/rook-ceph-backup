@@ -5,7 +5,6 @@ import {Options, registerCommands} from "./commands";
 import {log} from "./log";
 import {rethrow} from "./utils";
 import extend from "extend";
-import * as version from './version.json'
 import * as commander from 'commander'
 import {isCli, isUnitTest} from "./cfg";
 
@@ -71,7 +70,12 @@ export class Main {
   }
 
   versionString() : string {
-    return `${version["FullSemVer"]} (${version["CommitDate"]}, ${version["ShortSha"]})`
+    try {
+      let version = require('version.json') || {}
+      return `${version["FullSemVer"]} (${version["CommitDate"]}, ${version["ShortSha"]})`
+    } catch (err) {
+      return `unknown version: ${err.message.split(/\r?\n/).first()}`
+    }
   }
 
   optionsString(src:any[]) : string {
