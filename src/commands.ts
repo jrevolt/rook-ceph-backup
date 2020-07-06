@@ -130,7 +130,9 @@ export interface SnapshotOptions extends Options {
 
 export async function snapshot(opts: SnapshotOptions) {
   opts.namespace || opts.allNamespaces || err('Namespace?')
-  await new CephBackup().createSnapshotAll(opts.namespace, opts.workload)
+  let ceph = new CephBackup();
+  await ceph.createSnapshotAll(opts.namespace, opts.workload)
+  console.log(await ceph.list(opts.namespace, opts.workload))
 }
 
 export interface BackupOptions extends Options {
@@ -153,7 +155,9 @@ export interface ConsolidateOptions extends Options {
 
 export async function consolidate(opts: ConsolidateOptions) {
   opts.namespace || opts.allNamespaces || err('Namespace?')
-  await new CephBackup().consolidateAll(opts.namespace, opts.workload)
+  let ceph = new CephBackup();
+  await ceph.consolidateAll(opts.namespace, opts.workload)
+  console.log(await ceph.list(opts.namespace, opts.workload, true))
 }
 
 export interface RestoreOptions extends Options {
