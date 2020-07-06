@@ -1,11 +1,8 @@
 import {Main} from "./main";
-import {fail} from "./utils";
-import {CephCore} from "./ceph-core";
 import {CephRead} from "./ceph-read";
 import {log} from "./log";
 import {CephBackup} from "./ceph-backup";
 import {CephRestore} from "./ceph-restore";
-import assert from "assert";
 
 export function registerCommands(main: Main) {
   main.program
@@ -117,7 +114,7 @@ export interface DuOptions extends Options {
   workload: string
 }
 
-export async function du(opts) {
+export async function du(opts:DuOptions) {
   opts.namespace || opts.allNamespaces || err('Namespace?')
   let result = await new CephRead().diskUsage(opts.namespace, opts.workload)
   console.log(result)

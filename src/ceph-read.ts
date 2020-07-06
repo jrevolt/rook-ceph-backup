@@ -6,6 +6,19 @@ import {getFileSizeString} from "./utils";
 
 export class CephRead extends CephCore {
 
+  async loadAndFilterNamespaces(namespace: string | undefined, workload: string | undefined) {
+    // load/filter
+    let namespaces = (await this.listNamespaces()).filter(n => !namespace || n.name == namespace)
+    await namespaces.forEachAsync(async (ns) => await this.loadNamespace(ns));
+    namespaces.forEach(n => n.deployments = n.deployments.filter(d => !workload || d.name == workload))
+
+    // sort
+    namespaces.sort((a, b) => a.name.localeCompare(b.name));
+    namespaces.forEach(n => n.deployments.sort((a, b) => a.name.localeCompare(b.name)));
+    namespaces.flatMap(n => n.deployments).forEach(d => d.volumes.sort((a, b) => a.pvc.localeCompare(b.pvc)))
+    return namespaces;
+  }
+
   async search(q:string, namespace?:string) : Promise<string> {
     let nsall = (await this.listNamespaces()).filter(n => !namespace || n.name == namespace)
     await nsall.forEachAsync(async (ns) => await this.loadNamespace(ns));
@@ -24,19 +37,6 @@ export class CephRead extends CephCore {
     vols.forEach(v => report.push(printf('- %s/%s/%s (%s/%s)', v.deployment.namespace, v.deployment.name, v.pvc, v.image.pool, v.image.name)))
 
     return report.join('\n')
-  }
-
-  private async loadAndFilterNamespaces(namespace: string | undefined, workload: string | undefined) {
-    // load/filter
-    let namespaces = (await this.listNamespaces()).filter(n => !namespace || n.name == namespace)
-    await namespaces.forEachAsync(async (ns) => await this.loadNamespace(ns));
-    namespaces.forEach(n => n.deployments = n.deployments.filter(d => !workload || d.name == workload))
-
-    // sort
-    namespaces.sort((a, b) => a.name.localeCompare(b.name));
-    namespaces.forEach(n => n.deployments.sort((a, b) => a.name.localeCompare(b.name)));
-    namespaces.flatMap(n => n.deployments).forEach(d => d.volumes.sort((a, b) => a.pvc.localeCompare(b.pvc)))
-    return namespaces;
   }
 
   async list(namespace?:string, workload?:string, allSnapshots:boolean=false) {

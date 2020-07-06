@@ -1,10 +1,9 @@
-import {Ceph, INamespace} from "./ceph";
+import {Ceph} from "./ceph";
 import {BackupType, cfg, Deployment, Namespace, Snapshot, Volume} from "./cfg";
 import moment from "moment";
 import * as utils from "./utils";
-import {fail, newMoment} from "./utils";
+import {newMoment} from "./utils";
 import {log} from "./log";
-import assert from "assert";
 
 export class CephCore extends Ceph {
 
@@ -79,8 +78,8 @@ export class CephCore extends Ceph {
       let xday = x.timestamp.getDate();
       let mday =
         cfgMonthlyDayOfMonth != undefined ? cfgMonthlyDayOfMonth :
-          cfgMonthlyDayOfWeek != undefined ? utils.findFirstDayOfMonthByWeekday(x.timestamp, cfgMonthlyDayOfWeek) :
-            1;
+        cfgMonthlyDayOfWeek != undefined ? utils.findFirstDayOfMonthByWeekday(x.timestamp, cfgMonthlyDayOfWeek) :
+        1;
       return xday == mday || (xday > mday && newMoment(x.timestamp).month() > newMoment(latestFull.timestamp).month());
     };
     let isWeekly = (x: Snapshot) : boolean => {
