@@ -42,6 +42,10 @@ export class CephRead extends CephCore {
   async list(namespace?:string, workload?:string, allSnapshots:boolean=false) {
     let namespaces = await this.loadAndFilterNamespaces(namespace, workload);
 
+    await namespaces.flatMap(n => n.deployments).flatMap(d => d.volumes).forEachAsync(async (v) => {
+      await this.consolidateSnapshots(v.snapshots)
+    })
+
     // render
     let report : string[] = [];
     namespaces
