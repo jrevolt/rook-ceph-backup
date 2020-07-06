@@ -40,6 +40,7 @@ export function registerCommands(main: Main) {
     .command('backup')
     .description("Export backups for previously created snapshot(s)")
     .option('-w, --workload <workload>')
+    .option('-s, --make-snapshot')
     .action(main.wrap(backup))
   main.program
     .command('consolidate')
@@ -135,11 +136,15 @@ export async function snapshot(opts: SnapshotOptions) {
 export interface BackupOptions extends Options {
   namespace: string
   workload: string
+  makeSnapshot: boolean
 }
 
 export async function backup(opts: BackupOptions) {
   opts.namespace || opts.allNamespaces || err('Namespace?')
-  await new CephBackup().backupVolumeAll(opts.namespace, opts.workload)
+  let ceph = new CephBackup()
+  if (opts.makeSnapshot) await ceph.createSnapshotAll(opts.namespace, opts.workload)
+  await ceph.backupVolumeAll(opts.namespace, opts.workload)
+  console.log(await ceph.list(opts.namespace, opts.workload))
 }
 
 export interface ConsolidateOptions extends Options {
