@@ -265,7 +265,7 @@ export class Ceph {
     let stderrbuf = new streamBuffers.WritableStreamBuffer();
     let stderr = new Writable({
       write: (chunk, encoding, cb) => {
-        process.stderr.write(chunk, encoding)
+        if (!cfg.quiet) process.stderr.write(chunk, encoding)
         stderrbuf.write(chunk, encoding, cb)
       }
     })
