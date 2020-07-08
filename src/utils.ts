@@ -1,8 +1,7 @@
 import TraceError from "trace-error";
-import {log, logctx} from "./log";
+import {log} from "./log";
 import moment, {Moment, MomentFormatSpecification, MomentInput} from "moment";
 import {BackupType} from "./cfg";
-//import {rbdtools} from "./main";
 import DurationConstructor = moment.unitOfTime.DurationConstructor;
 
 
