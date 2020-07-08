@@ -1,8 +1,10 @@
+import './init'
 import {Main} from "./main";
 import {CephRead} from "./ceph-read";
 import {log} from "./log";
 import {CephBackup} from "./ceph-backup";
 import {CephRestore} from "./ceph-restore";
+import {BackupType, BackupTypeUtils} from "./cfg";
 
 export function registerCommands(main: Main) {
   main.program
@@ -36,8 +38,10 @@ export function registerCommands(main: Main) {
   main.program
     .command('backup')
     .description("Export backups for previously created snapshot(s)")
+    .option('-n, --namespace <namespace>')
     .option('-w, --workload <workload>')
-    .option('-s, --make-snapshot')
+    .option('-s, --make-snapshot', 'Create snapshot before starting volume backup')
+    .option('-t, --type <type>', 'Backup type: (monthly|full)|(weekly|diff)|(daily|inc)', BackupTypeUtils.fromCli)
     .action(main.wrap(backup))
   main.program
     .command('consolidate')
@@ -136,14 +140,15 @@ export interface BackupOptions extends Options {
   namespace: string
   workload: string
   makeSnapshot: boolean
+  type: BackupType
 }
 
 export async function backup(opts: BackupOptions) {
   opts.namespace || opts.allNamespaces || err('Namespace?')
   let ceph = new CephBackup()
   if (opts.makeSnapshot) await ceph.createSnapshotAll(opts.namespace, opts.workload)
-  await ceph.backupVolumeAll(opts.namespace, opts.workload)
-  console.log(await ceph.list(opts.namespace, opts.workload))
+  await ceph.backupVolumeAll(opts.namespace, opts.workload, opts.type)
+  console.log(await ceph.list(opts.namespace, opts.workload, true))
 }
 
 export interface ConsolidateOptions extends Options {
@@ -179,6 +184,7 @@ export interface RemoveSnapshotOptions extends  Options {
 
 export async function removeSnapshots(opts:RemoveSnapshotOptions) {
   opts.namespace || opts.allNamespaces || err('Namespace?')
+  opts.workload || err('Workload?')
   await new CephBackup().cliRemoveSnapshots(opts.namespace, opts.workload, opts.volume, opts.snapshot)
 }
 

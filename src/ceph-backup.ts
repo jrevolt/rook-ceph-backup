@@ -1,9 +1,8 @@
-import {cfg, Deployment, Namespace, Snapshot, Volume} from "./cfg";
+import {BackupType, cfg, Snapshot, Volume} from "./cfg";
 import {log} from "./log";
 import {report} from "./utils";
 import {CephRead} from "./ceph-read";
 import moment = require("moment");
-import assert from "assert";
 
 export class CephBackup extends CephRead {
 
@@ -40,12 +39,24 @@ export class CephBackup extends CephRead {
     this.consolidateSnapshots(vol.snapshots);
   }
 
-  async backupVolumeAll(namespace?:string, deployment?:string) {
-    await this.processVolumesAll(namespace, deployment, async (v) => await this.backupVolume(v))
+  async backupVolumeAll(namespace?:string, deployment?:string, type?:BackupType) {
+    await this.processVolumesAll(namespace, deployment, async (v) => await this.backupVolume(v, type))
   }
 
-  async backupVolume(vol: Volume) {
+  async backupVolume(vol: Volume, type?:BackupType) {
     log.info('Backing up volume %s', vol.describe())
+
+    // if explicit backup mode is specified, try to enforce backup type on latest unexported snapshot
+    if (type) {
+      // find candidate
+      let latest = vol.snapshots.filter(x => x.hasSnapshot && !x.hasFile && !x.isDeleteFile).last()
+      if (latest) {
+        latest.backupType = type
+        log.info('Suggesting backup type for latest unsaved snapshot %s@%s=%s', latest.volume.describe(), latest.name, latest.backupType)
+      } else {
+        log.warn('Explicit back mode specified but no snapshot candidate was found')
+      }
+    }
     await this
       .consolidateSnapshots(vol.snapshots)
       .filter(x => x.hasSnapshot && !x.hasFile && !x.isDeleteFile)
@@ -53,7 +64,7 @@ export class CephBackup extends CephRead {
   }
 
 
-  async backupSnapshot(snap: Snapshot/*, image: string, fromSnapshot: string, snapshot: string, directory: string*/) {
+  async backupSnapshot(snap: Snapshot/*, image: string, fromSnapshot: string, snapshot: string, directory: string*/) { //todo
     await this.backupSemaphore.use(async () => {
       let pool = snap.volume.image.pool;
       let image = snap.volume.image.name;

@@ -4,6 +4,7 @@ import moment from "moment";
 import * as utils from "./utils";
 import {newMoment} from "./utils";
 import {log} from "./log";
+import assert from "assert";
 
 export class CephCore extends Ceph {
 
@@ -73,20 +74,32 @@ export class CephCore extends Ceph {
     let cfgMonthlyDayOfMonth = cfgMonthly.dayOfMonth;
     let cfgMonthlyDayOfWeek = cfgMonthly.dayOfWeek ? moment.parseZone(cfgMonthly.dayOfWeek, 'ddd').toDate().getDay() : undefined;
     let cfgWeeklyDayOfWeek = cfgWeekly.dayOfWeek ? moment.parseZone(cfgWeekly.dayOfWeek, 'ddd').toDate().getDay() : undefined;
-    let isMonthly = (x: Snapshot) : boolean => {
+
+    function isMonthly(x: Snapshot) : boolean {
+      if (x.hasFile) return x.backupType == BackupType.monthly;
       if (!latestFull) return true;
+      if (x.backupType == BackupType.monthly) return true;
       let xday = x.timestamp.getDate();
       let mday =
         cfgMonthlyDayOfMonth != undefined ? cfgMonthlyDayOfMonth :
         cfgMonthlyDayOfWeek != undefined ? utils.findFirstDayOfMonthByWeekday(x.timestamp, cfgMonthlyDayOfWeek) :
         1;
       return xday == mday || (xday > mday && newMoment(x.timestamp).month() > newMoment(latestFull.timestamp).month());
-    };
-    let isWeekly = (x: Snapshot) : boolean => {
+    }
+
+    function isWeekly(x: Snapshot) : boolean {
+      if (x.hasFile) return x.backupType == BackupType.weekly;
       if (!latestDiff) return true;
+      if (x.backupType == BackupType.weekly) return true;
       let xday = x.timestamp.getDay();
       return xday == cfgWeeklyDayOfWeek || (/*xday > cfgWeeklyDayOfWeek &&*/ newMoment(x.timestamp).week() > newMoment(latestDiff.timestamp).week());
-    };
+    }
+
+    function isDaily(x:Snapshot) : boolean {
+      if (x.hasFile) return x.backupType == BackupType.daily;
+      return true;
+    }
+
     snaps.forEach(x => {
       if (isMonthly(x)) {
         x.backupType = BackupType.monthly;
@@ -95,8 +108,10 @@ export class CephCore extends Ceph {
       } else if (isWeekly(x)) {
         x.backupType = BackupType.weekly;
         latestDiff = x;
-      } else {
+      } else if (isDaily(x)) {
         x.backupType = BackupType.daily;
+      } else {
+        assert.fail()
       }
     });
 
