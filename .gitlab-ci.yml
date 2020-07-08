@@ -1,10 +1,62 @@
-
-before_script:
-  - source .gitlab-ci.sh
-
 build:
   stage: build
-  tags: [ jrevolt ]
+  image: docker:git
+  services:
+  - docker:dind
+  variables:
+    GIT_STRATEGY: none
   script:
-    - build
+  - |
+    # checkout sources
+    # using custom strategy because of gitversion requirements
+    git init . &&
+    git remote add origin "$CI_REPOSITORY_URL" &&
+    git fetch -t origin &&
+    git checkout "$CI_COMMIT_REF_NAME"
+  - |
+    # save git version information
+    docker run --rm \
+      -w /work -v $PWD:/work \
+      registry.gitlab.com/jrevolt/citools/gitversion \
+      | tee .git/gitversion.json
+  - |
+    # prepare docker auth
+    docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
+    cat /root/.docker/config.json > .git/docker.json
+  - |
+    # determine image tag
+    if [ "$CI_COMMIT_TAG" != "" ]; then
+      IMAGE_TAG="$CI_COMMIT_TAG"
+    else
+      IMAGE_TAG="$CI_COMMIT_REF_SLUG"
+    fi
+    echo "IMAGE_TAG=$IMAGE_TAG"
+  - |
+    # run buildkit build
+    docker run --rm --privileged \
+      -w /work \
+      -v $PWD:/work \
+      -v $PWD/.git/docker.json:/home/user/.docker/config.json:ro \
+      -v $PWD/.git/gitversion.json:/work/src/version.json:ro \
+      --entrypoint buildctl-daemonless.sh \
+      moby/buildkit:rootless \
+        build \
+          --frontend dockerfile.v0 \
+          --local context=. \
+          --local dockerfile=. \
+          --import-cache=type=registry,ref=${CI_REGISTRY_IMAGE}:cache \
+          --export-cache=type=registry,ref=${CI_REGISTRY_IMAGE}:cache \
+          --output=type=image,name=${CI_REGISTRY_IMAGE}:${IMAGE_TAG},push=true
+  - |
+    # if tagged, publish also as "latest"
+    if [ "${CI_COMMIT_TAG:-}" != "" ]; then
+      src=${CI_REGISTRY_IMAGE}:${IMAGE_TAG}
+      dst=${CI_REGISTRY_IMAGE}:latest
+      docker pull ${src} &&
+      docker tag ${src} ${dst} &&
+      docker push ${dst} &&
+      echo "DONE: $dst => $src"
+    fi
+
+
 
