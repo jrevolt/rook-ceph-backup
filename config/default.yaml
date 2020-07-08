@@ -19,8 +19,8 @@ k8s:
       host: #https://elasticsearch.mdxdev.sk
 
   backup:
-    nameFormat: YYYYMMDD-HHmm
-    namePattern: ^\d{8}-\d{4}$
+    nameFormat: YYYYMMDD-HHmmss
+    namePattern: ^\d{8}-\d{6}$
     path: /mnt/backups
     storageClassName: rook-ceph-block
     pool: rbd
