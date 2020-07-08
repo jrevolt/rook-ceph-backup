@@ -1,5 +1,5 @@
 import {Ceph} from "./ceph";
-import {BackupType, cfg, Deployment, Namespace, Snapshot, Volume} from "./cfg";
+import {BackupType, BackupTypeUtils, cfg, Deployment, Namespace, Snapshot, Volume} from "./cfg";
 import moment from "moment";
 import * as utils from "./utils";
 import {newMoment} from "./utils";
@@ -138,7 +138,7 @@ export class CephCore extends Ceph {
     // generate file names for new archives
     snaps.filter(x => !x.hasFile).forEach(x => {
       let from = x.dependsOn;
-      let since = ['ful','dif','inc'][x.backupType];
+      let since = BackupTypeUtils.toFileType(x.backupType);
       x.file = from ? `${x.name}-${since}-${from.name}.gz` : `${x.name}-${since}.gz`;
     });
 

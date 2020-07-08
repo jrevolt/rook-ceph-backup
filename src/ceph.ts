@@ -1,6 +1,7 @@
+import './init'
 import * as utils from './utils';
 import {fail, newMoment} from './utils';
-import {BackupType, cfg, Deployment, Namespace, Snapshot, Volume} from "./cfg";
+import {BackupType, BackupTypeUtils, cfg, Deployment, Namespace, Snapshot, Volume} from "./cfg";
 import {spawn} from "child_process";
 import q from 'q';
 import {log} from "./log";
@@ -184,7 +185,7 @@ export class Ceph {
               name: name,
               timestamp: timestamp.toDate(),
               //backupType: name.indexOf('-ful') ? BackupType.full : name.indexOf('-dif') ? BackupType.differential : BackupType.incremental,
-              backupType: ['ful','dif','inc'].indexOf(fname.replace(/^\d{8}-\d{4}-(ful|dif|inc).*/g, '$1')),
+              backupType: BackupTypeUtils.fromFileType(fname.replace(/^.*-(ful|dif|inc).*/g, '$1')), //fixme hardcoded literals
               file: fname,
               fileSize: fsize,
               hasFile: true,
@@ -212,7 +213,7 @@ export class Ceph {
     vol.snapshots.every((x, idx, arr) => {
       if (x.backupType == BackupType.monthly) return true; // skip, no deps
       if (x.hasFile) {
-        let name = x.file.replace(/.*(dif|inc)-(.*)\.gz/g, '$2');
+        let name = x.file.replace(/.*(dif|inc)-(.*)\.gz/g, '$2'); //fixme hardcoded literal
         x.dependsOn = vol.snapshots.find(x => x.name == name);
       }
       return true;
