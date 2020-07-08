@@ -1,5 +1,4 @@
-import "./cfg"
-import "./log"
+import "./init"
 
 import {Options, registerCommands} from "./commands";
 import {log} from "./log";
