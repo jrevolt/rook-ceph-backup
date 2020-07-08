@@ -2,6 +2,7 @@ import config from 'config';
 import {ElasticsearchTransportOptions} from "winston-elasticsearch";
 import moment from "moment";
 import printf from "printf";
+import assert from "assert";
 
 export function isUnitTest() {
   return process.env.NODE_ENV == "test" && process.env.JEST_WORKER_ID != undefined
@@ -120,7 +121,7 @@ export class Volume {
     return `${cfg.backup.path}/${this.deployment.namespace}/${this.deployment.name}/${this.pvc}/${this.image.name}`;
   }
 
-  describe() {
+  describe(simple=false) {
     return `${this.deployment.namespace}/${this.deployment.name}/${this.pvc} (${this.image.pool}/${this.image.name})`;
   }
 
@@ -132,11 +133,11 @@ export class Volume {
 
 export enum BackupType {
   // full backup
-  monthly,
+  monthly = 'monthly',
   // diff against latest full
-  weekly,
+  weekly = 'weekly',
   // diff against latest incremental, or latest differential (if previous incremental is unavailable)
-  daily
+  daily = 'daily',
 }
 
 export class Snapshot {
@@ -165,6 +166,14 @@ export class Snapshot {
     Object.assign(this, src);
   }
 
+  setType(type:BackupType) {
+  }
+
+  updateFileName() {
+    let type = BackupTypeUtils.toFileType(this.backupType);
+    this.file = this.dependsOn ? `${this.name}-${type}-${this.dependsOn.name}.gz` : `${this.name}-${type}.gz`
+  }
+
   describe() : string {
     return moment(this.timestamp).format('YYYYMMDD ddd');
   }
@@ -185,7 +194,7 @@ export class Snapshot {
   consolidationInfo() {
     return printf(
       '[%s][%s][has:%s][evict:%s][file:%4s|%s]',
-      'MWD'[this.backupType] || '?',
+      BackupTypeUtils.toCharFlag(this.backupType) || '?',
       this.name,
       `${this.hasSnapshot ? 'S' : '-'}${this.hasFile ? 'F' : '-'}`,
       `${this.isDeleteSnapshot ? 'S' : '-'}${this.isDeleteFile ? 'F' : '-'}`,
@@ -212,5 +221,39 @@ export class Snapshot {
 
 }
 
+export class BackupTypeUtils {
+
+  private static mappings = [
+    [BackupType.monthly, 'M', 'ful'],
+    [BackupType.weekly, 'W', 'dif'],
+    [BackupType.daily, 'D', 'inc'],
+  ]
+
+  static toFileType(type: BackupType): string {
+    return this.mappings.map(x => x[2])[this.mappings.map(x => x[0]).indexOf(type)]
+  }
+
+  static fromFileType(type: string): BackupType {
+    return this.mappings.map(x => x[0])[this.mappings.map(x => x[2]).indexOf(type)] as BackupType
+  }
+
+  static toCharFlag(type: BackupType): string {
+    return this.mappings.map(x => x[1])[this.mappings.map(x => x[0]).indexOf(type)]
+  }
+
+  static fromCharFlag(type: string): BackupType {
+    return this.mappings.map(x => x[0])[this.mappings.map(x => x[1]).indexOf(type)] as BackupType
+  }
+
+  static fromCli(s:string) : BackupType {
+    return (
+      /m[onthly]*|full?/i.test(s) ? BackupType.monthly :
+      /w[ekly]*|dif[ferntial]*/i.test(s) ? BackupType.weekly :
+      /d[aily]*|inc[remntal]*/i.test(s) ? BackupType.daily :
+      assert.fail(s)
+    )
+  }
+
+}
 
 export const cfg = Configuration.instance
