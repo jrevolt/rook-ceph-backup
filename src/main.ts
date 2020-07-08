@@ -5,7 +5,7 @@ import {log} from "./log";
 import {rethrow} from "./utils";
 import extend from "extend";
 import * as commander from 'commander'
-import {isCli, isUnitTest} from "./cfg";
+import {cfg, isCli, isUnitTest} from "./cfg";
 import * as version from './version.json'
 
 export class Main {
@@ -48,6 +48,9 @@ export class Main {
         for (let i = 0; i < arguments.length - 1; i++) args.push(arguments[i])
 
         log.level = opts.quiet ? 'error' : opts.debug ? 'debug' : log.level
+
+        cfg.quiet = opts.quiet || cfg.quiet || false
+        cfg.debug = opts.debug || cfg.debug || false
 
         log.info(`${main.program.name()} ${main.versionString()})`)
         log.info('Executing command [%s], options: %s', cmd.name(), main.optionsString(args));
