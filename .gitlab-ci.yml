@@ -12,7 +12,11 @@ build:
     git init . &&
     git remote add origin "$CI_REPOSITORY_URL" &&
     git fetch -t origin &&
-    git checkout "$CI_COMMIT_REF_NAME"
+    if [ "$CI_COMMIT_TAG" != "" ]; then
+      git checkout master && git reset --hard $CI_COMMIT_TAG
+    else
+      git checkout "$CI_COMMIT_REF_NAME"
+    fi
   - |
     # save git version information
     docker run --rm \
