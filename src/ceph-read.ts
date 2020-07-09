@@ -24,9 +24,14 @@ export class CephRead extends CephCore {
     await nsall.forEachAsync(async (ns) => await this.loadNamespace(ns));
 
     let re = new RegExp(q)
-    let namespaces = nsall.filter(ns => re.test(ns.name))
-    let deployments = nsall.flatMap(ns => ns.deployments).filter(d => re.test(d.name))
-    let vols = nsall.flatMap(ns => ns.deployments).flatMap(d => d.volumes).filter(v => re.test(v.pvc) || re.test(v.image.name))
+    let namespaces = nsall
+      .filter(ns => re.test(ns.name))
+      .filter(n => n.deployments.flatMap(d => d.volumes).length > 0)
+    let deployments = nsall.flatMap(ns => ns.deployments)
+      .filter(d => re.test(d.name))
+      .filter(d => d.volumes.length > 0)
+    let vols = nsall.flatMap(ns => ns.deployments).flatMap(d => d.volumes)
+      .filter(v => re.test(v.pvc) || re.test(v.image.name))
 
     let report : string[] = []
     report.push('Namespaces:')
