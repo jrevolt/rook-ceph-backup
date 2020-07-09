@@ -28,7 +28,7 @@ export class Main {
     if (args) args.unshift('dummy-exe-name', 'dummy-script-name')
     if (!args) args = process.argv
 
-    registerCommands(this)
+    registerCommands()
 
     let result = await this.program.parseAsync(args)
 

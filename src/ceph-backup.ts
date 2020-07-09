@@ -149,8 +149,12 @@ export class CephBackup extends CephRead {
 
   }
 
-  async removeBackupArchives(namespace:string, workload:string) {
+  async removeBackupArchives(namespace:string, workload:string, volume?:string) {
     await this.processVolumesAll(namespace, workload, async (v) => {
+
+      // filter by volume/image name, if specified
+      if (volume && (v.pvc != volume || v.image.name != volume)) return
+
       let toDelete = v.snapshots.filter(s => s.hasFile)
       if (toDelete.length == 0) {
         log.info('Nothing to delete in volume %s', v.describe())
