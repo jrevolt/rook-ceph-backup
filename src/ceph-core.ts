@@ -111,7 +111,7 @@ export class CephCore extends Ceph {
       } else if (isDaily(x)) {
         x.backupType = BackupType.daily;
       } else {
-        assert.fail()
+        assert.fail(`Unable to determine backup type for snapshot ${JSON.stringify(x.dbginfo())}`);
       }
     });
 
