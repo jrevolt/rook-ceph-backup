@@ -15,7 +15,7 @@ export function registerCommands() {
   registerBackupCommand();
   registerConsolidateCommand();
   registerRestoreCommand();
-  registerRemoveSnapshots();
+  registerRemoveSnapshot();
   registerRemoveBackupCommand();
 }
 
@@ -225,9 +225,9 @@ export async function restore(opts: RestoreOptions) {
 
 /// remove-snapshots ///
 
-function registerRemoveSnapshots() {
+function registerRemoveSnapshot() {
   Main.instance.program
-    .command('remove-snapshots')
+    .command('remove-snapshot')
     .description("Remove snapshot")
     .option('-n, --namespace <namespace>')
     .option('-w, --workload <workload>')
@@ -254,9 +254,9 @@ export interface RemoveSnapshotOptions extends  Options {
 
 export async function removeSnapshots(opts:RemoveSnapshotOptions) {
   opts.namespace || opts.allNamespaces || err('Namespace?')
-  opts.workload || opts.allWorkloads || err('Workload?')
-  opts.volume || opts.allVolumes || err('Volume?')
-  opts.snapshot || opts.allSnapshots || err('Snapshot?')
+  opts.workload || opts.allWorkloads || opts.allNamespaces || err('Workload?')
+  opts.volume || opts.allVolumes || opts.allWorkloads || opts.allNamespaces || err('Volume?')
+  opts.snapshot || opts.allSnapshots || opts.allVolumes || opts.allWorkloads || opts.allNamespaces || err('Snapshot?')
   await new CephBackup().cliRemoveSnapshots(opts.namespace, opts.workload, opts.volume, opts.snapshot)
 }
 
