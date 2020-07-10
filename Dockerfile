@@ -25,6 +25,7 @@ RUN npm run build
 RUN node .build/main.js -V
 
 FROM base as runtime
+COPY config/ /app/config/
 COPY --from=build /app/.build/ /app/
 
 

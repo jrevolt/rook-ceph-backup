@@ -1,2 +1,8 @@
+/.dockerignore
 /.build
 /node_modules
+/config/*local*
+/config/*test*
+*.md
+/doc
+
