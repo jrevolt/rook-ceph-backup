@@ -1,17 +1,8 @@
 ---
-k8s:
-
-  proxy:
-    host:
-    port:
+rbdtools:
 
   kubectl:
     config: /root/.kube/config
-
-  rancher:
-    url:
-    accessKey:
-    secretKey:
 
   elasticsearch:
     indexPrefix: #k8s-tools-clustername
@@ -21,9 +12,8 @@ k8s:
   backup:
     nameFormat: YYYYMMDD-HHmmss
     namePattern: ^\d{8}-\d{6}$
-    path: /mnt/backups
+    path: /backups
     storageClassName: rook-ceph-block
-    pool: rbd
     monthly: { max: 2, .dayOfMonth: 1, .dayOfWeek: Sunday }
     weekly:  { max: 3, dayOfWeek: Sunday }
     daily:   { max: 5 }
@@ -33,6 +23,3 @@ k8s:
     operator: 10
     exec: 15
 
-  #deployments:
-    #namespace:
-      #name:

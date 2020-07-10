@@ -25,18 +25,12 @@ export class Configuration {
   kubectl: {
     config: string,
   }
-  rancher: {
-    url: string
-    accessKey: string
-    secretKey: string
-  }
   elasticsearch: ElasticsearchTransportOptions
   backup: {
     nameFormat:  string, // YYYYMMDD-HHmm
     namePattern: string, // regexp: ^\d{8}-\d{4}$
     path: string,
     storageClassName: string,
-    pool: string,
     monthly: { max: number, dayOfMonth: number, dayOfWeek: string },
     weekly:  { max: number, dayOfWeek: string, },
     daily:   { max: number },
@@ -60,7 +54,7 @@ export class Configuration {
 
   constructor() {
     process.env['ALLOW_CONFIG_MUTATIONS']='true'
-    Object.assign(this, config.get('k8s'))
+    Object.assign(this, config.get('rbdtools'))
   }
 
   get namespaces() {
