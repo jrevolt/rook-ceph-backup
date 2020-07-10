@@ -108,6 +108,43 @@ or:
 
 ## Configuration
 
+### Rook Toolbox
+
+Deploy Rook Toolbox (rook-ceph-tools)
+https://rook.io/docs/rook/v1.3/ceph-toolbox.html
+
+Modify deployment so that it includes NFS-backed data volume for backups.
+
+### local.yaml
+
+Configuration defaults are in `config/default.yaml`
+
+Customizations are provided in `config/local.yaml` file.
+
+You need to specify at least:
+- your KUBECONFIG file
+- path to backup folder mounted in Rook Toolbox (default: `/backup`)
+- k8s storage class name managed by Rook Ceph
+
+```
+k8s:
+  kubectl:
+    config: /path/to/kubeconfig.yaml
+  backup:
+    storageClassName: rook-ceph-block
+    path: /path/to/backup/folder
+```
+
+### Docker
+
+```
+$ docker run --rm \
+    -v /real/path/to/kubeconfig:/root/.kube/config \
+    -v /host/path/to/local.yaml:/app/config/local.yaml \
+    registry.gitlab.com/jrevolt/rook-ceph-backup \
+    command [options]
+```
+
 ## Usage
 
 ```
