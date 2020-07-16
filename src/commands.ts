@@ -33,11 +33,13 @@ function registerCommonOptions() {
     // following are CLI optimizations to allow these options before command
     .option('-n, --namespace <namespace>')
     .option('-w, --workload <workload>')
+    .option('--kubeconfig <kubeconfig>')
 }
 
 export class Options {
   quiet: boolean
   debug: boolean
+  kubeconfig: string
 }
 
 /// search ///

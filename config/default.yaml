@@ -1,9 +1,6 @@
 ---
 rbdtools:
 
-  kubectl:
-    config: /root/.kube/config
-
   elasticsearch:
     indexPrefix: #k8s-tools-clustername
     clientOpts:

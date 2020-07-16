@@ -16,15 +16,7 @@ export class Configuration {
 
   quiet: boolean
   debug: boolean
-  dryRun: boolean
 
-  proxy: {
-    host: string,
-    port: number,
-  }
-  kubectl: {
-    config: string,
-  }
   elasticsearch: ElasticsearchTransportOptions
   backup: {
     nameFormat:  string, // YYYYMMDD-HHmm

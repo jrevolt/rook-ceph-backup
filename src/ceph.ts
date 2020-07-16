@@ -44,9 +44,8 @@ export class Ceph {
   }
 
   initializeKubernetesClient() {
-    log.debug(`Loading KubeConfig: ${cfg.kubectl.config}`)
     let config = new k8s.KubeConfig();
-    config.loadFromFile(cfg.kubectl.config);
+    config.loadFromDefault();
 
     let core = config.makeApiClient(k8s.CoreV1Api);
     let apps = config.makeApiClient(k8s.AppsV1Api);
@@ -228,11 +227,7 @@ export class Ceph {
 
 
   env() {
-    let proxy = cfg.proxy.host ? `http://${cfg.proxy.host}:${cfg.proxy.port}` : '';
-    return {
-      KUBECONFIG: cfg.kubectl.config,
-      //HTTPS_PROXY: proxy,
-    }
+    return {}
   }
 
   async exec(command, args) : Promise<string> {
