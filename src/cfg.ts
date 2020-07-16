@@ -50,6 +50,7 @@ export class Configuration {
   }
 
   constructor() {
+    //NODE_CONFIG_DIR: see init.ts
     process.env['ALLOW_CONFIG_MUTATIONS']='true'
     Object.assign(this, config.get('rbdtools'))
   }
