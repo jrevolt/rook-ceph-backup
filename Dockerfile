@@ -15,14 +15,16 @@ ADD .git/ .git/
 RUN gitversion > /version.json
 
 FROM node:14-alpine as base
-RUN apk add --update --no-cache bash curl jq tzdata
+RUN apk add --update --no-cache bash curl jq tzdata tar
 COPY --from=download-kubectl /usr/local/bin/kubectl /usr/local/bin/kubectl
 ADD bin/entrypoint.sh /usr/local/bin/rbdtools
 ENTRYPOINT ["rbdtools"]
 ENV TZ="Europe/Bratislava"
 WORKDIR /app
-ADD package*json tsconfig.json ./
-RUN npm ci -d
+RUN --mount=source=package.json,target=/app/package.json \
+    --mount=source=package-lock.json,target=/app/package-lock.json \
+    --mount=source=tsconfig.json,target=/app/tsconfig.json \
+    npm ci -d
 
 FROM base as build
 ADD . ./
@@ -31,8 +33,9 @@ RUN npm run build
 RUN node .build/main.js -V
 
 FROM base as runtime
-COPY config/ /app/config/
-COPY --from=build /app/.build/ /app/
+RUN --mount=from=build,source=/app/.build,target=/build \
+    --mount=target=/context \
+    tar c -C /context config -C /build --exclude "*test*" . | tar xv
 
 
 
