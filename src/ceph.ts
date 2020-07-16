@@ -306,11 +306,11 @@ export class Ceph {
     if (this.toolbox) return;
     await this.resolveToolboxSemaphore.use(async () => {
       if (this.toolbox) return;
-      log.debug('Resolving rook-ceph-tools pod...');
-      this.toolbox = await this.k8sClient.listNamespacedPod('rook-ceph')
+      log.debug('Resolving Rook Ceph Toolbox pod. Looking for pod labeled "app=%s" in namespace "%s"', cfg.rook.toolbox, cfg.rook.namespace);
+      this.toolbox = await this.k8sClient.listNamespacedPod(cfg.rook.namespace)
         .then(x => x.body.items
           .filter(x => x.metadata)
-          .filter(x => this.isMatchLabels({app: 'rook-ceph-tools'}, x.metadata?.labels))
+          .filter(x => this.isMatchLabels({app: cfg.rook.toolbox}, x.metadata?.labels))
           .map(x => x.metadata?.name)
           .first())
     })
@@ -319,7 +319,7 @@ export class Ceph {
   async invokeToolbox(script: string) : Promise<string> {
     if (!this.toolbox) await this.resolveToolbox()
     return await this.operatorSemaphore.use(async () =>
-      await this.podexec("rook-ceph", this.toolbox, 'rook-ceph-tools', script));
+      await this.podexec(cfg.rook.namespace, this.toolbox, cfg.rook.toolbox, script));
   }
 
   async report() {

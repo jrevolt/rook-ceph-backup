@@ -17,6 +17,11 @@ export class Configuration {
   quiet: boolean
   debug: boolean
 
+  rook: {
+    namespace: string
+    toolbox: string
+  }
+
   elasticsearch: ElasticsearchTransportOptions
   backup: {
     nameFormat:  string, // YYYYMMDD-HHmm

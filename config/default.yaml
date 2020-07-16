@@ -1,6 +1,10 @@
 ---
 rbdtools:
 
+  rook:
+    namespace: rook-ceph
+    toolbox: rook-ceph-tools
+
   elasticsearch:
     indexPrefix: #k8s-tools-clustername
     clientOpts:
