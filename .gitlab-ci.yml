@@ -18,12 +18,6 @@ build:
       git checkout "$CI_COMMIT_REF_NAME"
     fi
   - |
-    # save git version information
-    docker run --rm \
-      -w /work -v $PWD:/work \
-      registry.gitlab.com/jrevolt/citools/gitversion \
-      | tee .git/gitversion.json
-  - |
     # prepare docker auth
     docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
     cat /root/.docker/config.json > .git/docker.json
@@ -41,7 +35,6 @@ build:
       -w /work \
       -v $PWD:/work \
       -v $PWD/.git/docker.json:/home/user/.docker/config.json:ro \
-      -v $PWD/.git/gitversion.json:/work/src/version.json:ro \
       --entrypoint buildctl-daemonless.sh \
       moby/buildkit:rootless \
         build \

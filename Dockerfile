@@ -9,6 +9,11 @@ RUN echo "Installing kubectl..." &&\
     chmod +x /usr/local/bin/kubectl &&\
     kubectl version --client
 
+FROM registry.gitlab.com/jrevolt/citools/gitversion as gitversion
+WORKDIR /work
+ADD .git/ .git/
+RUN gitversion > /version.json
+
 FROM node:14-alpine as base
 RUN apk add --update --no-cache bash curl jq tzdata
 COPY --from=download-kubectl /usr/local/bin/kubectl /usr/local/bin/kubectl
@@ -21,6 +26,7 @@ RUN npm ci -d
 
 FROM base as build
 ADD . ./
+COPY --from=gitversion /version.json src/version.json
 RUN npm run build
 RUN node .build/main.js -V
 
