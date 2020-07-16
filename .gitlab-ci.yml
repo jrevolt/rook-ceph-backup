@@ -46,13 +46,28 @@ build:
           --output=type=image,name=${CI_REGISTRY_IMAGE}:${IMAGE_TAG},push=true
   - |
     # if tagged, publish also as "latest"
-    if [ "${CI_COMMIT_TAG:-}" != "" ]; then
+    if [[ "${CI_COMMIT_TAG:-}" != "" ]]; then
       src=${CI_REGISTRY_IMAGE}:${IMAGE_TAG}
       dst=${CI_REGISTRY_IMAGE}:latest
       docker pull ${src} &&
       docker tag ${src} ${dst} &&
       docker push ${dst} &&
       echo "DONE: $dst => $src"
+    else
+      echo "SKIP"
+    fi
+  - |
+    # publish to docker.io (master/tag only)
+    if [[ "${CI_COMMIT_TAG:-}" != "" || "${CI_COMMIT_REF_SLUG}" = "master" ]]; then
+      src=${CI_REGISTRY_IMAGE}:${IMAGE_TAG}
+      dst=docker.io/jrevolt/rook-ceph-backup:${IMAGE_TAG}
+      docker pull ${src} &&
+      docker tag ${src} ${dst} &&
+      docker login -u "$DOCKERHUB_USERNAME" -p "$DOCKERHUB_PASSWORD" &&
+      docker push ${dst} &&
+      echo "DONE: $dst => $src"
+    else
+      echo "SKIP"
     fi
 
 
