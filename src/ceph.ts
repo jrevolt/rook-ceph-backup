@@ -11,6 +11,9 @@ import {V1Deployment, V1Pod, V1StatefulSet} from '@kubernetes/client-node';
 import * as streamBuffers from 'stream-buffers';
 import extend from 'extend';
 import {Writable} from "stream";
+import fs from 'fs';
+import os from 'os';
+import path from "path";
 
 export interface INamespace {
   persistentVolumes: k8s.V1PersistentVolume[],
@@ -44,6 +47,22 @@ export class Ceph {
   }
 
   initializeKubernetesClient() {
+    let kubeconfig = process.env['XKUBECONFIG']
+    if (kubeconfig) {
+      log.info('Initializing KUBECONFIG from $XKUBECONFIG environment variable')
+      let fname = `${os.tmpdir()}${path.sep}rook-ceph-backup-kubeconfig-${new Date().getTime()}`;
+      process.env['KUBECONFIG'] = fname
+
+      log.debug('Writing %s', fname)
+      fs.writeFileSync(fname, kubeconfig);
+      process.on('beforeExit', () => {
+        if (fs.existsSync(fname)) {
+          log.debug('Removing %s', fname);
+          fs.unlinkSync(fname);
+        }
+      })
+    }
+
     let config = new k8s.KubeConfig();
     config.loadFromDefault();
 
