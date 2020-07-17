@@ -9,15 +9,10 @@ RUN echo "Installing kubectl..." &&\
     chmod +x /usr/local/bin/kubectl &&\
     kubectl version --client
 
-FROM registry.gitlab.com/jrevolt/citools/gitversion as gitversion
-WORKDIR /work
-ADD .git/ .git/
-RUN gitversion > /version.json
-
 FROM node:14-alpine as base
-RUN apk add --update --no-cache bash curl jq tzdata tar
-COPY --from=download-kubectl /usr/local/bin/kubectl /usr/local/bin/kubectl
-ADD bin/entrypoint.sh /usr/local/bin/rbdtools
+RUN --mount=from=download-kubectl,source=/usr/local/bin,target=/mnt/kubectl \
+    apk add --update --no-cache bash tzdata tar &&\
+    tar c -C /mnt/kubectl . | tar xv -C /usr/local/bin
 ENTRYPOINT ["rbdtools"]
 ENV TZ="Europe/Bratislava"
 WORKDIR /app
@@ -28,14 +23,15 @@ RUN --mount=source=package.json,target=/app/package.json \
 
 FROM base as build
 ADD . ./
-COPY --from=gitversion /version.json src/version.json
-RUN npm run build
+ARG GITVERSION
+RUN echo "$GITVERSION" > src/version.json && npm run build
 RUN node .build/main.js -V
 
 FROM base as runtime
-RUN --mount=from=build,source=/app/.build,target=/build \
-    --mount=target=/context \
-    tar c -C /context config -C /build --exclude "*test*" . | tar xv
+RUN --mount=from=build,source=/app/.build,target=/mnt/root/app,rw \
+    --mount=source=/config,target=/mnt/root/app/config,rw \
+    --mount=source=/bin/entrypoint.sh,target=/mnt/root/usr/local/bin/rbdtools \
+    tar c -C /mnt/root/ --exclude "app/*test*" . | tar xv -C /
 
 
 

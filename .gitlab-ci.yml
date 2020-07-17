@@ -1,10 +1,13 @@
+image: registry.gitlab.com/jrevolt/citools/docker-git:latest
+
+services:
+- docker:dind
+
+variables:
+  GIT_STRATEGY: none
+
 build:
   stage: build
-  image: docker:git
-  services:
-  - docker:dind
-  variables:
-    GIT_STRATEGY: none
   script:
   - |
     # checkout sources
@@ -17,6 +20,7 @@ build:
     else
       git checkout "$CI_COMMIT_REF_NAME"
     fi
+    source .gitlab-ci.sh
   - |
     # prepare docker auth
     docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
@@ -31,19 +35,7 @@ build:
     echo "IMAGE_TAG=$IMAGE_TAG"
   - |
     # run buildkit build
-    docker run --rm --privileged \
-      -w /work \
-      -v $PWD:/work \
-      -v $PWD/.git/docker.json:/home/user/.docker/config.json:ro \
-      --entrypoint buildctl-daemonless.sh \
-      moby/buildkit:rootless \
-        build \
-          --frontend dockerfile.v0 \
-          --local context=. \
-          --local dockerfile=. \
-          --import-cache=type=registry,ref=${CI_REGISTRY_IMAGE}:cache \
-          --export-cache=type=registry,ref=${CI_REGISTRY_IMAGE}:cache \
-          --output=type=image,name=${CI_REGISTRY_IMAGE}:${IMAGE_TAG},push=true
+    version=$IMAGE_TAG image
   - |
     # if tagged, publish also as "latest"
     if [[ "${CI_COMMIT_TAG:-}" != "" ]]; then
