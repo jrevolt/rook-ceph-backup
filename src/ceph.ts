@@ -11,6 +11,9 @@ import {V1Deployment, V1Pod, V1StatefulSet} from '@kubernetes/client-node';
 import * as streamBuffers from 'stream-buffers';
 import extend from 'extend';
 import {Writable} from "stream";
+import fs from 'fs';
+import os from 'os';
+import path from "path";
 
 export interface INamespace {
   persistentVolumes: k8s.V1PersistentVolume[],
@@ -44,9 +47,24 @@ export class Ceph {
   }
 
   initializeKubernetesClient() {
-    log.debug(`Loading KubeConfig: ${cfg.kubectl.config}`)
+    let kubeconfig = process.env['XKUBECONFIG']
+    if (kubeconfig) {
+      log.info('Initializing KUBECONFIG from $XKUBECONFIG environment variable')
+      let fname = `${os.tmpdir()}${path.sep}rook-ceph-backup-kubeconfig-${new Date().getTime()}`;
+      process.env['KUBECONFIG'] = fname
+
+      log.debug('Writing %s', fname)
+      fs.writeFileSync(fname, kubeconfig);
+      process.on('beforeExit', () => {
+        if (fs.existsSync(fname)) {
+          log.debug('Removing %s', fname);
+          fs.unlinkSync(fname);
+        }
+      })
+    }
+
     let config = new k8s.KubeConfig();
-    config.loadFromFile(cfg.kubectl.config);
+    config.loadFromDefault();
 
     let core = config.makeApiClient(k8s.CoreV1Api);
     let apps = config.makeApiClient(k8s.AppsV1Api);
@@ -228,11 +246,7 @@ export class Ceph {
 
 
   env() {
-    let proxy = cfg.proxy.host ? `http://${cfg.proxy.host}:${cfg.proxy.port}` : '';
-    return {
-      KUBECONFIG: cfg.kubectl.config,
-      //HTTPS_PROXY: proxy,
-    }
+    return {}
   }
 
   async exec(command, args) : Promise<string> {
@@ -311,11 +325,11 @@ export class Ceph {
     if (this.toolbox) return;
     await this.resolveToolboxSemaphore.use(async () => {
       if (this.toolbox) return;
-      log.debug('Resolving rook-ceph-tools pod...');
-      this.toolbox = await this.k8sClient.listNamespacedPod('rook-ceph')
+      log.debug('Resolving Rook Ceph Toolbox pod. Looking for pod labeled "app=%s" in namespace "%s"', cfg.rook.toolbox, cfg.rook.namespace);
+      this.toolbox = await this.k8sClient.listNamespacedPod(cfg.rook.namespace)
         .then(x => x.body.items
           .filter(x => x.metadata)
-          .filter(x => this.isMatchLabels({app: 'rook-ceph-tools'}, x.metadata?.labels))
+          .filter(x => this.isMatchLabels({app: cfg.rook.toolbox}, x.metadata?.labels))
           .map(x => x.metadata?.name)
           .first())
     })
@@ -324,7 +338,7 @@ export class Ceph {
   async invokeToolbox(script: string) : Promise<string> {
     if (!this.toolbox) await this.resolveToolbox()
     return await this.operatorSemaphore.use(async () =>
-      await this.podexec("rook-ceph", this.toolbox, 'rook-ceph-tools', script));
+      await this.podexec(cfg.rook.namespace, this.toolbox, cfg.rook.toolbox, script));
   }
 
   async report() {

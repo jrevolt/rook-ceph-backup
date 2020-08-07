@@ -16,15 +16,12 @@ export class Configuration {
 
   quiet: boolean
   debug: boolean
-  dryRun: boolean
 
-  proxy: {
-    host: string,
-    port: number,
+  rook: {
+    namespace: string
+    toolbox: string
   }
-  kubectl: {
-    config: string,
-  }
+
   elasticsearch: ElasticsearchTransportOptions
   backup: {
     nameFormat:  string, // YYYYMMDD-HHmm
@@ -53,6 +50,7 @@ export class Configuration {
   }
 
   constructor() {
+    //NODE_CONFIG_DIR: see init.ts
     process.env['ALLOW_CONFIG_MUTATIONS']='true'
     Object.assign(this, config.get('rbdtools'))
   }

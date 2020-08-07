@@ -1,8 +1,9 @@
 ---
 rbdtools:
 
-  kubectl:
-    config: /root/.kube/config
+  rook:
+    namespace: rook-ceph
+    toolbox: rook-ceph-tools
 
   elasticsearch:
     indexPrefix: #k8s-tools-clustername

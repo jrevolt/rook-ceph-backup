@@ -52,6 +52,10 @@ export class Main {
         cfg.quiet = opts.quiet || cfg.quiet || false
         cfg.debug = opts.debug || cfg.debug || false
 
+        if (opts.kubeconfig) {
+          process.env['KUBECONFIG'] = opts.kubeconfig
+        }
+
         log.info(`${main.program.name()} ${main.versionString()})`)
         log.info('Executing command [%s], options: %s', cmd.name(), main.optionsString(args));
 

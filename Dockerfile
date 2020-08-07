@@ -10,23 +10,28 @@ RUN echo "Installing kubectl..." &&\
     kubectl version --client
 
 FROM node:14-alpine as base
-RUN apk add --update --no-cache bash curl jq tzdata
-COPY --from=download-kubectl /usr/local/bin/kubectl /usr/local/bin/kubectl
-ADD bin/entrypoint.sh /usr/local/bin/rbdtools
+RUN --mount=from=download-kubectl,source=/usr/local/bin,target=/mnt/kubectl \
+    apk add --update --no-cache bash tzdata tar &&\
+    tar c -C /mnt/kubectl . | tar xv -C /usr/local/bin
 ENTRYPOINT ["rbdtools"]
 ENV TZ="Europe/Bratislava"
 WORKDIR /app
-ADD package*json tsconfig.json ./
-RUN npm ci -d
+RUN --mount=source=package.json,target=/app/package.json \
+    --mount=source=package-lock.json,target=/app/package-lock.json \
+    --mount=source=tsconfig.json,target=/app/tsconfig.json \
+    npm ci -d
 
 FROM base as build
 ADD . ./
-RUN npm run build
+ARG GITVERSION
+RUN echo "$GITVERSION" > src/version.json && npm run build
 RUN node .build/main.js -V
 
 FROM base as runtime
-COPY config/ /app/config/
-COPY --from=build /app/.build/ /app/
+RUN --mount=from=build,source=/app/.build,target=/mnt/root/app,rw \
+    --mount=source=/config,target=/mnt/root/app/config,rw \
+    --mount=source=/bin/entrypoint.sh,target=/mnt/root/usr/local/bin/rbdtools \
+    tar c -C /mnt/root/ --exclude "app/*test*" . | tar xv -C /
 
 
 
